@@ -247,10 +247,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <section id="tab-types" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
       <h2>Все окна объекта</h2>
-      <div class="scroll"><table>
-        <thead><tr><th>Код</th><th>Размер, см</th><th class="n">м²</th><th class="n">Шт</th><th>Где</th><th></th></tr></thead>
-        <tbody id="typesBody"></tbody>
-      </table></div>
+      <div id="typesBody"></div>
     </div>
   </section>
 
@@ -556,7 +553,7 @@ function renderProgressAll(kind, c, box, tlist, done, cutDone){
   if (!tlist.length) list.append(el("div", {className: "empty", textContent: "Сначала запишите окна на вкладке «Замер»."}));
   for (const t of tlist) {
     const n = c[t.num] || 0, d = done[t.num] || 0, l = n - d;
-    const qIn = el("input", {value: "1", inputMode: "numeric", ariaLabel: "Сколько штук"});
+    const qIn = el("input", {value: "1", inputMode: "numeric", ariaLabel: "Сколько штук", id: `q-${kind}-${t.num}`});
     const plus = el("button", {textContent: "Отметить"});
     plus.onclick = () => { const q = parseInt(qIn.value, 10); if (!(q > 0)) { toast("Введите количество"); return; } mark(kind, t.num, q); };
     const allBtn = el("button", {className: "sec", textContent: "Все"});
@@ -789,7 +786,17 @@ function clearInputs(){ $("inW").value = ""; $("inH").value = ""; $("inW").focus
 /* ---------- отрисовка ---------- */
 function el(tag, props = {}, ...kids){ const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) e.append(k); return e; }
 
+// Перерисовка не должна сбивать то, что человек сейчас вводит (данные коллег приходят в любой момент)
 function render(){
+  const a = document.activeElement;
+  const keep = a && a.id && (a.tagName === "INPUT" || a.tagName === "SELECT") ? {id: a.id, v: a.value, s: a.selectionStart, e: a.selectionEnd} : null;
+  renderAll();
+  if (keep) {
+    const n = document.getElementById(keep.id);
+    if (n && n !== a) { n.value = keep.v; n.focus(); try { if (keep.s != null) n.setSelectionRange(keep.s, keep.e); } catch(e) {} }
+  }
+}
+function renderAll(){
   // объекты
   const sel = $("objSelect");
   sel.innerHTML = "";
@@ -1210,45 +1217,47 @@ $("objDelGo").onclick = async () => {
 };
 
 function whereList(n){
-  const parts = [];
+  const byFloor = {};
   for (const r of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)))
-    if (r.items[n] > 0) parts.push(`${r.floor} эт. ${r.name} ×${r.items[n]}`);
-  return parts.join("; ");
+    if (r.items[n] > 0) (byFloor[r.floor] = byFloor[r.floor] || []).push(`${r.name}×${r.items[n]}`);
+  return Object.keys(byFloor).sort(byNum).map(f => `${f} эт.: ${byFloor[f].join(", ")}`).join(" · ");
 }
 
+let editingType = null;
 function renderTypes(c){
   const body = $("typesBody"); body.innerHTML = "";
   const tlist = Object.values(types).sort((a, b) => a.num - b.num);
-  if (!tlist.length) { body.append(el("tr", {}, el("td", {colSpan: 6, className: "empty", textContent: "Окон пока нет."}))); return; }
+  if (!tlist.length) { body.append(el("div", {className: "empty", textContent: "Окон пока нет."})); return; }
   for (const t of tlist) {
-    const q = c[t.num] || 0;
-    const tr = el("tr", {},
-      el("td", {className: "code", textContent: code(t.num)}),
-      el("td", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}),
-      el("td", {className: "n", textContent: m2(t.w * t.h / 10000)}),
-      el("td", {className: "n", textContent: q}),
-      el("td", {className: "where", textContent: whereList(t.num) || "нигде"}));
-    const act = el("td");
+    const q = c[t.num] || 0, area = t.w * t.h / 10000;
+    const row = el("div", {className: "prow"},
+      el("div", {className: "row"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)} см`}),
+        el("span", {className: "grow"}), el("span", {className: "pill", textContent: `${q} шт · ${m2(area * q)} м²`})),
+      el("div", {className: "where", textContent: q ? whereList(t.num) : "Пока ни в одном кабинете"}));
     if (allowed("measure")) {
-      const ed = el("button", {className: "link", textContent: "Изменить"});
-      ed.onclick = () => editType(t, tr);
-      act.append(ed);
-      if (!q) { const del = el("button", {className: "link", textContent: "Удалить"}); del.onclick = () => confirmTap(del, async () => { try { await db.doc(objPath() + "/types/n" + t.num).delete(); } catch(e) { toast(errMsg(e)); } }); act.append(del); }
+      if (editingType === t.num) {
+        const w = el("input", {value: cm(t.w), inputMode: "decimal", id: `ew-${t.num}`, ariaLabel: "Ширина, см"});
+        const h = el("input", {value: cm(t.h), inputMode: "decimal", id: `eh-${t.num}`, ariaLabel: "Высота, см"});
+        const ok = el("button", {textContent: "Сохранить"});
+        ok.onclick = async () => {
+          const nw = num(w.value), nh = num(h.value);
+          if (!(nw > 0 && nh > 0)) { toast("Введите размеры в см"); return; }
+          try { await db.doc(objPath() + "/types/n" + t.num).set({num: t.num, w: nw, h: nh, created: Date.now()}); editingType = null; toast(`${code(t.num)}: размер изменён на ${cm(nw)}×${cm(nh)}`); render(); }
+          catch(e) { toast(errMsg(e)); }
+        };
+        const cancel = el("button", {className: "sec", textContent: "Отмена"}); cancel.onclick = () => { editingType = null; render(); };
+        row.append(el("div", {className: "grid2"}, el("div", {}, el("label", {htmlFor: w.id, textContent: "Ширина, см"}), w), el("div", {}, el("label", {htmlFor: h.id, textContent: "Высота, см"}), h)),
+          el("div", {className: "row"}, ok, cancel));
+      } else {
+        const act = el("div", {className: "row"});
+        const ed = el("button", {className: "link", textContent: "Изменить размер"}); ed.onclick = () => { editingType = t.num; render(); };
+        act.append(ed);
+        if (!q) { const del = el("button", {className: "link", textContent: "Удалить"}); del.onclick = () => confirmTap(del, async () => { try { await db.doc(objPath() + "/types/n" + t.num).delete(); } catch(e) { toast(errMsg(e)); } }); act.append(del); }
+        row.append(act);
+      }
     }
-    tr.append(act); body.append(tr);
+    body.append(row);
   }
-}
-function editType(t, tr){
-  const w = el("input", {value: cm(t.w), inputMode: "decimal", style: "width:72px", ariaLabel: "Ширина"});
-  const h = el("input", {value: cm(t.h), inputMode: "decimal", style: "width:72px", ariaLabel: "Высота"});
-  const ok = el("button", {textContent: "Сохранить"});
-  ok.onclick = async () => {
-    const nw = num(w.value), nh = num(h.value);
-    if (!(nw > 0 && nh > 0)) { toast("Введите размеры в см"); return; }
-    try { await db.doc(objPath() + "/types/n" + t.num).set({num: t.num, w: nw, h: nh, created: Date.now()}); toast(`${code(t.num)} обновлено`); }
-    catch(e) { toast(errMsg(e)); }
-  };
-  tr.children[1].replaceChildren(el("div", {className: "row"}, w, el("span", {textContent: "×"}), h, ok));
 }
 function confirmTap(btn, action){
   if (btn.dataset.sure) { action(); return; }
