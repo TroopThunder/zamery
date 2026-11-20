@@ -955,9 +955,10 @@ function shiftStats(s){
       el("span", {}, "Оклейка ", el("b", {textContent: `${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
     el("div", {className: "pnums"},
       el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
-      bonus ? el("span", {}, "Бонус ", el("b", {textContent: `${money(bonus)} ₽`})) : "",
+      bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
+      bonus < 0 ? el("span", {className: "left"}, "Штраф ", el("b", {textContent: `−${money(-bonus)} ₽`})) : "",
       el("span", {className: "done"}, "Итого ", el("b", {textContent: `${money(pay + bonus)} ₽`}))),
-    s.bonusNote ? el("div", {className: "empty", textContent: "Комментарий к бонусу: " + s.bonusNote}) : "");
+    s.bonusNote ? el("div", {className: "empty", textContent: (bonus < 0 ? "Причина штрафа: " : "Комментарий к бонусу: ") + s.bonusNote}) : "");
 }
 
 function renderShift(){
@@ -1078,23 +1079,33 @@ function renderAdmin(){
     tb.append(tbody);
     sc.append(el("div", {className: "scroll"}, tb));
     const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
-    cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус\tИтого"].concat(ss.map(s => {
+    cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
       const w = shiftWorkOf(s), pay = shiftPay(s);
-      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), money(pay + (s.bonus || 0))].join("\t");
+      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
     })).join("\n"), "Смены скопированы — вставьте в Excel");
     sc.append(cp);
   }
   for (const s of ss) {
     const ref = F.doc(fs, "shifts/" + s.id);
-    const bn = el("input", {value: s.bonus || "", inputMode: "decimal", placeholder: "0", id: `bn-${s.id}`});
+    // бонус (+) или штраф (−): сумма вводится без знака, знак выбирается списком
+    const bk = el("select", {id: `bk-${s.id}`});
+    bk.append(el("option", {value: "plus", textContent: "Бонус +"}), el("option", {value: "minus", textContent: "Штраф −"}));
+    bk.value = (s.bonus || 0) < 0 ? "minus" : "plus";
+    const bn = el("input", {value: s.bonus ? Math.abs(s.bonus) : "", inputMode: "decimal", placeholder: "0", id: `bn-${s.id}`});
     const bt = el("input", {value: s.bonusNote || "", placeholder: "за что (необязательно)", id: `bt-${s.id}`});
-    const bs = el("button", {className: "sec", textContent: "Сохранить бонус"});
-    bs.onclick = async () => { try { await F.updateDoc(ref, {bonus: numOrNull(bn.value) || 0, bonusNote: bt.value.trim()}); toast("Бонус сохранён"); } catch(e) { toast(errMsg(e)); } };
+    const bs = el("button", {className: "sec", textContent: "Сохранить"});
+    bs.onclick = async () => {
+      const v = Math.abs(numOrNull(bn.value) || 0), val = bk.value === "minus" ? -v : v;
+      try { await F.updateDoc(ref, {bonus: val, bonusNote: bt.value.trim()}); toast(val < 0 ? "Штраф сохранён" : val > 0 ? "Бонус сохранён" : "Бонус убран"); } catch(e) { toast(errMsg(e)); }
+    };
     const row = el("div", {className: "srow"},
       el("div", {className: "row"}, el("b", {textContent: s.name || "—"}), el("span", {className: "size", textContent: `${dateTime(s.start)} → ${s.end ? dateTime(s.end) : "идёт"}`}), el("span", {className: "grow"}),
         el("span", {className: "pill" + (s.end ? "" : " ok"), textContent: s.end ? dur(s.end - s.start) : "открыта"})),
       shiftStats(s),
-      el("div", {className: "grid2"}, el("div", {}, el("label", {htmlFor: bn.id, textContent: "Бонус, ₽"}), bn), el("div", {}, el("label", {htmlFor: bt.id, textContent: "Комментарий"}), bt)));
+      el("div", {className: "grid2"},
+        el("div", {}, el("label", {htmlFor: bk.id, textContent: "Бонус или штраф"}), bk),
+        el("div", {}, el("label", {htmlFor: bn.id, textContent: "Сумма, ₽"}), bn)),
+      el("div", {}, el("label", {htmlFor: bt.id, textContent: "Комментарий (за что)"}), bt));
     const act = el("div", {className: "row"}, bs);
     if (!s.end) { const cl = el("button", {className: "link", textContent: "Закрыть смену сейчас"}); cl.onclick = () => confirmTap(cl, async () => {
       try { const w = await loadShiftWork(s); await F.updateDoc(ref, {end: Date.now(), cutArea: w.cut, glueArea: w.glue, sum: Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100}); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
