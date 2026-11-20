@@ -58,7 +58,8 @@ service cloud.firestore {
     match /objects/{oid} {
       allow read: if approved();
       allow write: if hasRole('measure');
-      match /types/{t} { allow read: if approved(); allow write: if hasRole('measure'); }
+      // окна: замерщик только добавляет новые, менять и удалять размеры может руководство
+      match /types/{t} { allow read: if approved(); allow create: if hasRole('measure'); allow update, delete: if isManager(); }
       match /rooms/{r} { allow read: if approved(); allow write: if hasRole('measure'); }
       // Отметки нарезки и оклейки: только своим именем и только с нужным правом; изменить нельзя
       match /log/{l} {

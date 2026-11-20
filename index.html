@@ -171,6 +171,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   </header>
   <div class="row" id="meRow"><span id="meChip" class="pill">Загружаю профиль…</span></div>
   <div id="status" class="notice hidden"></div>
+  <div class="notice hidden" id="shiftWarn" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="grow"></span><button class="sec" id="shiftWarnGo">Открыть «Мою смену»</button></div>
 
   <div class="card" id="objCard">
     <label for="objSelect">Объект</label>
@@ -182,7 +183,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       <input id="objNewName" class="grow" placeholder="Название, например «Школа №12»">
       <button id="objCreate">Создать</button>
     </div>
-    <div class="row"><span class="grow"></span><button class="link hidden" id="objDelBtn">Удалить объект</button></div>
+    <div class="row"><span class="grow"></span><button class="link hidden" id="objRename">Переименовать</button><button class="link hidden" id="objDelBtn">Удалить объект</button></div>
+    <div class="row hidden" id="objRenameRow"><input id="objRenameInput" class="grow" autocomplete="off" aria-label="Новое название объекта"><button id="objRenameGo">Сохранить</button><button class="sec" id="objRenameCancel">Отмена</button></div>
     <div class="notice hidden" id="objDelBox" style="display:flex;flex-direction:column;gap:8px">
       <b id="objDelTitle"></b>
       <div>Удалятся все этажи, кабинеты, окна и отметки нарезки и оклейки этого объекта. Вернуть их будет нельзя — перед удалением можно скачать копию базы в «Управлении». Уже закрытые смены и суммы к оплате сохранятся.</div>
@@ -204,22 +206,30 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <section id="tab-measure" class="col" style="display:flex;flex-direction:column;gap:12px">
     <div class="notice hidden" id="measureRO">У вас нет прав на замеры — только просмотр. Права выдаёт владелец.</div>
     <div class="card">
+      <input id="roomSearch" placeholder="Найти кабинет по номеру" autocomplete="off" inputmode="search">
+      <div class="chips" id="roomSearchRes"></div>
       <h2>Этаж</h2>
       <div class="chips" id="floorChips"></div>
       <div class="row hidden" id="floorNewRow">
         <input id="floorNewName" class="grow" placeholder="Номер этажа" inputmode="numeric">
         <button id="floorCreate">Добавить</button>
       </div>
+      <div class="row hidden" id="floorTools"><button class="link" id="floorRename">Переименовать этаж</button><button class="link" id="floorDel">Удалить этаж</button></div>
       <h2>Кабинет</h2>
       <div class="chips" id="roomChips"></div>
       <div class="row hidden" id="roomNewRow">
         <input id="roomNewName" class="grow" placeholder="Номер кабинета, например 205">
         <button id="roomCreate">Добавить</button>
       </div>
+      <div class="notice hidden" id="renameBox" style="display:flex;flex-direction:column;gap:8px">
+        <label for="renameInput" id="renameLabel"></label>
+        <input id="renameInput" autocomplete="off">
+        <div class="row"><button id="renameGo">Сохранить</button><button class="sec" id="renameCancel">Отмена</button></div>
+      </div>
     </div>
 
     <div class="card" id="roomCard">
-      <div class="row"><h2 class="grow" id="roomTitle">Выберите кабинет</h2><button class="link" id="roomDel">Удалить кабинет</button></div>
+      <div class="row"><h2 class="grow" id="roomTitle">Выберите кабинет</h2><button class="link hidden" id="roomRename">Переименовать</button><button class="link" id="roomDel">Удалить кабинет</button></div>
       <div class="items" id="roomItems"></div>
 
       <div class="row" style="align-items:flex-end">
@@ -791,6 +801,7 @@ function render(){
   const a = document.activeElement;
   const keep = a && a.id && (a.tagName === "INPUT" || a.tagName === "SELECT") ? {id: a.id, v: a.value, s: a.selectionStart, e: a.selectionEnd} : null;
   renderAll();
+  if (typeof afterRender === "function") afterRender();
   if (keep) {
     const n = document.getElementById(keep.id);
     if (n && n !== a) { n.value = keep.v; n.focus(); try { if (keep.s != null) n.setSelectionRange(keep.s, keep.e); } catch(e) {} }
@@ -1173,7 +1184,7 @@ async function downloadBackup(){
   toast("Собираю копию…");
   try {
     const grab = async path => { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; };
-    const out = {exportedAt: new Date().toISOString(), config: await grab("config"), settings: await grab("settings"), users: await grab("users"), shifts: await grab("shifts"), objects: {}};
+    const out = {exportedAt: new Date().toISOString(), config: await grab("config"), settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
     for (const o of (await F.getDocs(F.collection(fs, "objects"))).docs)
       out.objects[o.id] = {data: o.data(), types: await grab(`objects/${o.id}/types`), rooms: await grab(`objects/${o.id}/rooms`), log: await grab(`objects/${o.id}/log`)};
     const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
@@ -1216,6 +1227,181 @@ $("objDelGo").onclick = async () => {
   btn.disabled = false;
 };
 
+/* ---------- удобства: переименование, поиск, смена, Excel ---------- */
+// Размеры уже записанных окон меняет и удаляет только руководство; замерщик только добавляет
+const canEditTypes = () => isManager();
+let renameTarget = null, roomQuery = "";
+
+function afterRender(){
+  const m = allowed("measure");
+  // без права «Замер» не показываем поля ввода и кнопки, которые всё равно не работают
+  $("inW").closest(".row").classList.toggle("hidden", !m);
+  $("copyFrom").closest(".row").classList.toggle("hidden", !m);
+  $("typeButtons").closest(".card").classList.toggle("hidden", !m);
+  if (!m) document.querySelectorAll("#roomItems .qty button").forEach(b => b.remove());
+  $("roomRename").classList.toggle("hidden", !m || !room());
+  $("objRename").classList.toggle("hidden", !m || !curObj);
+  $("floorTools").classList.toggle("hidden", !m || curFloor === null);
+  renderRoomSearch();
+  // заработок за текущую смену прямо во вкладках нарезки и оклейки
+  if (myShift) for (const kind of ["cut", "glue"]) $("tab-" + kind).prepend(shiftBanner());
+  // напоминание о долгой смене
+  const warn = $("shiftWarn"), long = myShift && Date.now() - myShift.start > 12 * 3600e3;
+  warn.classList.toggle("hidden", !long);
+  if (long) warn.firstElementChild.textContent = `Смена открыта уже ${dur(Date.now() - myShift.start)}. Не забудьте закрыть её в разделе «Моя смена».`;
+  // выгрузка в Excel для руководства
+  if (isManager()) {
+    const box = $("tab-admin"), last = box.lastElementChild;
+    const b = el("button", {textContent: "Скачать Excel"}); b.onclick = () => downloadExcel(b);
+    const card = el("div", {className: "card"}, el("h2", {textContent: "Выгрузка в Excel"}),
+      el("div", {className: "empty", textContent: "Один файл с листами: замеры по кабинетам всех объектов, окна (сколько нужно, нарезано, наклеено), смены и итоги по сотрудникам за период, выбранный в «Сменах и оплате»."}), b);
+    last ? box.insertBefore(card, last) : box.append(card);
+  }
+}
+
+function shiftBanner(){
+  const w = shiftWorkOf(myShift), pay = shiftPay(myShift);
+  return el("div", {className: "notice"}, el("div", {className: "pnums"},
+    el("span", {}, "Ваша смена ", el("b", {textContent: dur(Date.now() - myShift.start)})),
+    el("span", {}, "нарезка ", el("b", {textContent: `${m2(w.cut)} м²`})),
+    el("span", {}, "оклейка ", el("b", {textContent: `${m2(w.glue)} м²`})),
+    el("span", {className: "done"}, "заработано ", el("b", {textContent: `${money(pay)} ₽`}))));
+}
+$("shiftWarnGo").onclick = () => showTab("shift");
+
+/* поиск кабинета по номеру на всех этажах */
+function renderRoomSearch(){
+  const res = $("roomSearchRes"); res.innerHTML = "";
+  const q = roomQuery.trim().toLowerCase(); if (!q) return;
+  const found = rooms.filter(r => r.name.toLowerCase().includes(q)).sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)).slice(0, 20);
+  if (!found.length) { res.append(el("div", {className: "empty", textContent: "Кабинет не найден"})); return; }
+  for (const r of found) {
+    const b = el("button", {className: "chip", textContent: `${r.name} · ${r.floor} эт.`});
+    b.onclick = () => { curFloor = r.floor; curRoomId = r.id; roomQuery = ""; $("roomSearch").value = ""; hideMatch(); render(); $("roomCard").scrollIntoView({block: "start"}); };
+    res.append(b);
+  }
+}
+$("roomSearch").addEventListener("input", e => { roomQuery = e.target.value; renderRoomSearch(); });
+
+/* переименование объекта, этажа, кабинета */
+$("objRename").onclick = () => {
+  const o = objects.find(o => o.id === curObj); if (!o) return;
+  $("objRenameInput").value = o.name || ""; $("objRenameRow").classList.remove("hidden"); $("objRenameInput").focus();
+};
+$("objRenameCancel").onclick = () => $("objRenameRow").classList.add("hidden");
+$("objRenameGo").onclick = async () => {
+  const name = $("objRenameInput").value.trim(); if (!name) { toast("Введите название"); return; }
+  try { await db.doc(objPath()).update({name}); $("objRenameRow").classList.add("hidden"); toast("Объект переименован"); } catch(e) { toast(errMsg(e)); }
+};
+$("objRenameInput").addEventListener("keydown", e => { if (e.key === "Enter") $("objRenameGo").click(); });
+
+function openRename(kind){
+  const r = room();
+  if (kind === "room" && !r) return;
+  renameTarget = kind;
+  $("renameLabel").textContent = kind === "floor" ? `Новое название этажа (сейчас «${curFloor}»)` : `Новый номер кабинета (сейчас «${r.name}», ${r.floor} этаж)`;
+  $("renameInput").value = kind === "floor" ? curFloor : r.name;
+  $("renameBox").classList.remove("hidden"); $("renameInput").focus(); $("renameInput").select();
+}
+$("floorRename").onclick = () => openRename("floor");
+$("roomRename").onclick = () => { openRename("room"); $("renameBox").scrollIntoView({block: "center"}); };
+$("renameCancel").onclick = () => $("renameBox").classList.add("hidden");
+$("renameInput").addEventListener("keydown", e => { if (e.key === "Enter") $("renameGo").click(); });
+$("renameGo").onclick = async () => {
+  const val = $("renameInput").value.trim(); if (!val) { toast("Введите название"); return; }
+  const o = objects.find(o => o.id === curObj); if (!o) return;
+  if (renameTarget === "floor") {
+    const old = curFloor;
+    if (val === old) { $("renameBox").classList.add("hidden"); return; }
+    if (floors().includes(val)) { toast("Такой этаж уже есть"); return; }
+    const fl = (o.floors || []).map(f => f === old ? val : f); if (!fl.includes(val)) fl.push(val);
+    try {
+      const b = F.writeBatch(fs);
+      b.update(F.doc(fs, objPath()), {floors: fl});
+      for (const r of rooms.filter(r => r.floor === old)) b.update(F.doc(fs, roomPath(r.id)), {floor: val});
+      await b.commit();
+      o.floors = fl; rooms.filter(r => r.floor === old).forEach(r => r.floor = val); curFloor = val;
+      $("renameBox").classList.add("hidden"); toast("Этаж переименован"); render();
+    } catch(e) { toast(errMsg(e)); }
+  } else {
+    const r = room(); if (!r) return;
+    if (rooms.some(x => x.id !== r.id && x.floor === r.floor && x.name === val)) { toast("Такой кабинет на этаже уже есть"); return; }
+    r.name = val; saveRoom(r); $("renameBox").classList.add("hidden"); toast("Кабинет переименован"); render();
+  }
+};
+$("floorDel").onclick = function(){
+  const btn = this;
+  if (rooms.some(r => r.floor === curFloor)) { toast("На этаже есть кабинеты — сначала удалите их"); return; }
+  confirmTap(btn, async () => {
+    const o = objects.find(o => o.id === curObj); if (!o) return;
+    const fl = (o.floors || []).filter(f => f !== curFloor);
+    try { await db.doc(objPath()).update({floors: fl}); o.floors = fl; curFloor = null; curRoomId = null; toast("Этаж удалён"); render(); } catch(e) { toast(errMsg(e)); }
+  });
+};
+
+/* выгрузка в Excel */
+let xlsxLoading = null;
+function loadXLSX(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxLoading || (xlsxLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => res(window.XLSX); s.onerror = () => { xlsxLoading = null; rej(new Error("xlsx-load")); };
+    document.head.append(s);
+  }));
+}
+const r4 = x => Math.round(x * 10000) / 10000, r2 = x => Math.round(x * 100) / 100;
+async function downloadExcel(btn){
+  btn.disabled = true; toast("Готовлю Excel…");
+  try {
+    const X = await loadXLSX();
+    const zam = [["Объект", "Этаж", "Кабинет", "Код", "Ширина, см", "Высота, см", "Кол-во", "Площадь, м²"]];
+    const win = [["Объект", "Код", "Ширина, см", "Высота, см", "Площадь 1 шт, м²", "Нужно, шт", "Площадь всего, м²", "Нарезано, шт", "Наклеено, шт"]];
+    for (const o of objects) {
+      delete typesCache[o.id];
+      const t = await objTypes(o.id);
+      const rs = (await F.getDocs(F.collection(fs, `objects/${o.id}/rooms`))).docs.map(d => d.data())
+        .sort((a, b) => byNum(String(a.floor), String(b.floor)) || byNum(String(a.name), String(b.name)));
+      const lg = (await F.getDocs(F.collection(fs, `objects/${o.id}/log`))).docs.map(d => d.data());
+      const need = {}, cut = {}, glue = {};
+      for (const r of rs) for (const k of Object.keys(r.items || {}).sort(byNum)) {
+        const q = r.items[k]; if (!(q > 0)) continue;
+        const tp = t[k] || {w: 0, h: 0};
+        zam.push([o.name, r.floor, r.name, code(k), tp.w, tp.h, q, r4(tp.w * tp.h / 10000 * q)]);
+        need[k] = (need[k] || 0) + q;
+      }
+      for (const x of lg) { const d = x.kind === "cut" ? cut : x.kind === "glue" ? glue : null; if (d) d[x.num] = (d[x.num] || 0) + x.q; }
+      for (const tp of Object.values(t).sort((a, b) => a.num - b.num)) {
+        const a = tp.w * tp.h / 10000, n = need[tp.num] || 0;
+        win.push([o.name, code(tp.num), tp.w, tp.h, r4(a), n, r4(a * n), cut[tp.num] || 0, glue[tp.num] || 0]);
+      }
+    }
+    const from = adminPeriod === "all" ? 0 : (adminPeriod === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(adminPeriod) * 864e5);
+    const ss = shifts.filter(s => s.start >= from).sort((a, b) => a.start - b.start);
+    const sh = [["Сотрудник", "Начало", "Конец", "Часы", "Нарезка, м²", "Цена нарезки, ₽/м²", "Оклейка, м²", "Цена оклейки, ₽/м²", "За работу, ₽", "Бонус/штраф, ₽", "Комментарий", "Итого, ₽"]];
+    const tot = {};
+    for (const s of ss) {
+      const w = shiftWorkOf(s), pay = shiftPay(s), hrs = ((s.end || Date.now()) - s.start) / 36e5, bonus = s.bonus || 0;
+      sh.push([s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", r2(hrs), r4(w.cut), s.priceCut, r4(w.glue), s.priceGlue, r2(pay), bonus, s.bonusNote || "", r2(pay + bonus)]);
+      const t = tot[s.uid] || (tot[s.uid] = {name: s.name, n: 0, h: 0, cut: 0, glue: 0, pay: 0, bonus: 0});
+      t.n++; t.h += hrs; t.cut += w.cut; t.glue += w.glue; t.pay += pay; t.bonus += bonus;
+    }
+    const it = [["Сотрудник", "Смен", "Часы", "Нарезка, м²", "Оклейка, м²", "За работу, ₽", "Бонусы/штрафы, ₽", "К оплате, ₽"]];
+    for (const t of Object.values(tot)) it.push([t.name, t.n, r2(t.h), r4(t.cut), r4(t.glue), r2(t.pay), r2(t.bonus), r2(t.pay + t.bonus)]);
+
+    const wb = X.utils.book_new();
+    const add = (rows, name, widths) => { const ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = widths.map(w => ({wch: w})); X.utils.book_append_sheet(wb, ws, name); };
+    add(zam, "Замеры", [18, 8, 10, 7, 11, 11, 8, 12]);
+    add(win, "Окна", [18, 7, 11, 11, 15, 10, 17, 13, 13]);
+    add(sh, "Смены", [18, 15, 15, 7, 12, 17, 12, 17, 13, 15, 22, 11]);
+    add(it, "Итоги", [18, 7, 8, 12, 12, 13, 16, 12]);
+    const per = {"1": "сегодня", "7": "7-дней", "30": "30-дней", "all": "всё-время"}[adminPeriod] || adminPeriod;
+    X.writeFile(wb, `windows-${new Date().toISOString().slice(0, 10)}-${per}.xlsx`);
+    toast("Excel скачан");
+  } catch(e) { toast(String(e && e.message) === "xlsx-load" ? "Не удалось загрузить модуль Excel — проверьте интернет" : "Не удалось сделать Excel: " + errMsg(e)); }
+  btn.disabled = false;
+}
+
 function whereList(n){
   const byFloor = {};
   for (const r of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)))
@@ -1234,7 +1420,7 @@ function renderTypes(c){
       el("div", {className: "row"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)} см`}),
         el("span", {className: "grow"}), el("span", {className: "pill", textContent: `${q} шт · ${m2(area * q)} м²`})),
       el("div", {className: "where", textContent: q ? whereList(t.num) : "Пока ни в одном кабинете"}));
-    if (allowed("measure")) {
+    if (typeof canEditTypes === "function" ? canEditTypes() : allowed("measure")) {
       if (editingType === t.num) {
         const w = el("input", {value: cm(t.w), inputMode: "decimal", id: `ew-${t.num}`, ariaLabel: "Ширина, см"});
         const h = el("input", {value: cm(t.h), inputMode: "decimal", id: `eh-${t.num}`, ariaLabel: "Высота, см"});
