@@ -1252,7 +1252,8 @@ function afterRender(){
   const warn = $("shiftWarn"), long = myShift && Date.now() - myShift.start > 12 * 3600e3;
   warn.classList.toggle("hidden", !long);
   if (long) warn.firstElementChild.textContent = `Смена открыта уже ${dur(Date.now() - myShift.start)}. Не забудьте закрыть её в разделе «Моя смена».`;
-  // выгрузка в Excel для руководства
+  // руководство: кто сейчас на смене (вверху «Управления») и выгрузка в Excel
+  if (isManager()) { syncLive(); $("tab-admin").prepend(liveCard()); }
   if (isManager()) {
     const box = $("tab-admin"), last = box.lastElementChild;
     const b = el("button", {textContent: "Скачать Excel"}); b.onclick = () => downloadExcel(b);
@@ -1404,6 +1405,67 @@ async function downloadExcel(btn){
   } catch(e) { toast(String(e && e.message) === "xlsx-load" ? "Не удалось загрузить модуль Excel — проверьте интернет" : "Не удалось сделать Excel: " + errMsg(e)); }
   btn.disabled = false;
 }
+
+/* ---------- «Сейчас на смене» для руководства: обновляется само ---------- */
+let liveSubs = [], liveKey = "", liveLogs = {}, liveInfo = {};
+function syncLive(){
+  if (!fs || !isManager()) return;
+  const open = shifts.filter(s => !s.end).map(s => s.id).sort().slice(0, 30);
+  const key = open.join(",") + "|" + objects.map(o => o.id).join(",");
+  if (key === liveKey) return;
+  liveKey = key; liveSubs.forEach(u => u()); liveSubs = []; liveLogs = {};
+  if (!open.length) { liveInfo = {}; return; }
+  // слушаем только отметки открытых смен — дёшево и сразу видно новые
+  for (const o of objects)
+    liveSubs.push(F.onSnapshot(F.query(F.collection(fs, `objects/${o.id}/log`), F.where("shift", "in", open)),
+      q => { liveLogs[o.id] = q.docs.map(d => d.data()); computeLive(); }, () => {}));
+}
+let liveBusy = false, liveAgain = false;
+async function computeLive(){
+  if (liveBusy) { liveAgain = true; return; }
+  liveBusy = true;
+  try {
+    const acc = {};
+    for (const [oid, arr] of Object.entries(liveLogs)) {
+      let t = await objTypes(oid);
+      if (arr.some(x => !t[x.num])) { delete typesCache[oid]; t = await objTypes(oid); }   // появились новые окна
+      for (const x of arr) {
+        const a = acc[x.shift] || (acc[x.shift] = {cut: 0, glue: 0, cutN: 0, glueN: 0, last: 0});
+        const tp = t[x.num]; if (!tp || !(x.kind === "cut" || x.kind === "glue")) continue;
+        a[x.kind] += x.q * tp.w * tp.h / 10000; a[x.kind + "N"] += x.q; a.last = Math.max(a.last, x.at || 0);
+      }
+    }
+    liveInfo = acc;
+    for (const s of shifts.filter(s => !s.end)) { const a = acc[s.id]; shiftWork[s.id] = {cut: Math.max(0, a ? a.cut : 0), glue: Math.max(0, a ? a.glue : 0)}; }
+    render();
+  } catch(e) {}
+  liveBusy = false;
+  if (liveAgain) { liveAgain = false; computeLive(); }
+}
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "только что" : m < 60 ? `${m} мин назад` : `${Math.floor(m / 60)} ч ${m % 60} мин назад`; };
+function liveCard(){
+  const open = shifts.filter(s => !s.end).sort((a, b) => a.start - b.start);
+  const card = el("div", {className: "card"}, el("div", {className: "row"}, el("h2", {className: "grow", textContent: "Сейчас на смене"}),
+    el("span", {className: "pill" + (open.length ? " ok" : ""), textContent: open.length ? `${open.length} чел.` : "никого"})));
+  if (!open.length) { card.append(el("div", {className: "empty", textContent: "Сейчас никто не на смене."})); return card; }
+  let sum = 0;
+  for (const s of open) {
+    const a = liveInfo[s.id] || {cutN: 0, glueN: 0, last: 0}, w = shiftWorkOf(s), pay = shiftPay(s);
+    sum += pay;
+    const stale = a.last && Date.now() - a.last > 2 * 3600e3;
+    card.append(el("div", {className: "srow"},
+      el("div", {className: "row"}, el("b", {className: "grow", textContent: s.name || "—"}), el("span", {className: "money", textContent: `${money(pay)} ₽`})),
+      el("div", {className: "pnums"},
+        el("span", {}, "Идёт ", el("b", {textContent: dur(Date.now() - s.start)})),
+        el("span", {}, "Нарезка ", el("b", {textContent: `${a.cutN} шт · ${m2(w.cut)} м²`})),
+        el("span", {}, "Оклейка ", el("b", {textContent: `${a.glueN} шт · ${m2(w.glue)} м²`}))),
+      el("div", {className: stale ? "where" : "empty", style: stale ? "color:var(--warn)" : "", textContent: a.last ? `Последняя отметка: ${ago(a.last)}` : "Отметок за смену ещё нет"})));
+  }
+  if (open.length > 1) card.append(el("div", {className: "pnums"}, el("span", {className: "done"}, "Всего заработано за открытые смены ", el("b", {textContent: `${money(sum)} ₽`}))));
+  return card;
+}
+// раз в минуту обновляем «идёт …» и «… мин назад», пока открыто «Управление»
+setInterval(() => { if (!$("tab-admin").classList.contains("hidden") && isManager()) render(); }, 60000);
 
 function whereList(n){
   const byFloor = {};
