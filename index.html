@@ -1020,7 +1020,7 @@ function renderShift(){
 }
 
 /* ---------- Управление (только владелец) ---------- */
-let adminPeriod = "7";
+let adminPeriod = "7", adminUser = null;
 function renderAdmin(){
   const box = $("tab-admin"); box.innerHTML = "";
   if (!isManager()) return;
@@ -1045,7 +1045,17 @@ function renderAdmin(){
   const list = Object.entries(usersMap).filter(([id]) => id !== myId && id !== ownerUid)
     .sort((a, b) => (!!a[1].approved - !!b[1].approved) || String(a[1].name).localeCompare(String(b[1].name), "ru"));
   if (!list.length) uc.append(el("div", {className: "empty", textContent: "Пока никто не зарегистрировался. Отправьте сотрудникам ссылку на сайт — они зарегистрируются и появятся здесь."}));
-  for (const [id, u] of list) {
+  // выбор одного сотрудника из списка; ожидающие доступа — вверху списка
+  if (list.length) {
+    if (!list.some(([id]) => id === adminUser)) adminUser = list[0][0];
+    const pend = list.filter(([, u]) => !u.approved).length;
+    const sel = el("select", {id: "admUserSel"});
+    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (u.approved ? "" : " — ждёт доступа")}));
+    sel.value = adminUser;
+    sel.onchange = () => { adminUser = sel.value; render(); };
+    uc.append(el("label", {htmlFor: "admUserSel", textContent: `Выберите сотрудника (всего ${list.length}${pend ? `, ждут доступа: ${pend}` : ""})`}), sel);
+  }
+  for (const [id, u] of list.filter(([id]) => id === adminUser)) {
     const ref = F.doc(fs, "users/" + id);
     const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
     const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
