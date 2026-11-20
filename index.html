@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Замеры окон</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column for a phone on site — object bar, tabs, then the current room up top, input below it. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#18212b; --muted:#5d6b7a; --line:#d5dce3;
+  --accent:#e2590f; --accent-ink:#ffffff; --accent-soft:#fde9dc;
+  --ok:#137a4b; --warn:#9a5b00;
+  --display:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --surface:#1b222a; --ink:#e7ecf1; --muted:#9aa7b4; --line:#2e3843;
+  --accent:#ff7a33; --accent-ink:#1a0f08; --accent-soft:#3a2416; --ok:#3ccf8e; --warn:#f2b24c; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --surface:#1b222a; --ink:#e7ecf1; --muted:#9aa7b4; --line:#2e3843;
+  --accent:#ff7a33; --accent-ink:#1a0f08; --accent-soft:#3a2416; --ok:#3ccf8e; --warn:#f2b24c; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 var(--body)}
+main{max-width:640px;margin:0 auto;padding:12px 16px 80px;display:flex;flex-direction:column;gap:12px}
+h1{font:700 20px/1.2 var(--display);margin:4px 0 0;text-wrap:balance}
+h2{font:600 16px/1.3 var(--display);margin:0;text-wrap:balance}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+label{font-size:13px;color:var(--muted)}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button{font:600 15px/1.2 var(--body);border:1px solid transparent;border-radius:10px;padding:10px 14px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button.sec{background:transparent;color:var(--ink);border-color:var(--line)}
+button.link{background:none;border:0;color:var(--accent);padding:6px 4px;font-weight:500}
+button:disabled{opacity:.45;cursor:default}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{background:transparent;color:var(--muted);border:0;padding:10px 2px;font-size:14px}
+.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:600 14px/1 var(--body);padding:9px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.chip.add{color:var(--accent);border-style:dashed}
+.code{font:600 15px/1 var(--mono)}
+.size{font:500 13px/1 var(--mono);color:var(--muted)}
+.types{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.type{display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:400;text-align:left}
+.type:active{background:var(--accent-soft)}
+.items{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item button.sec{padding:8px 10px}
+.gitem{display:flex;flex-direction:column;gap:6px;padding:10px 0 10px 10px;border-bottom:1px solid var(--line);border-left:4px solid var(--line)}
+.gitem.st-done{border-left-color:var(--ok)}
+.gitem.st-ready{border-left-color:var(--accent)}
+.gitem.st-wait{border-left-color:var(--line);opacity:.85}
+.gitem .row{gap:8px}
+.tag{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.tag.done{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.ready{background:var(--accent-soft);color:var(--accent)}
+.tag.wait{background:var(--bg);color:var(--muted)}
+.gitem button.sec{padding:8px 10px}
+.legend{display:flex;gap:8px;flex-wrap:wrap}
+.topbar{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:3;background:var(--bg);padding:6px 0}
+.apptitle{font-size:12px;color:var(--muted)}
+.topbar h1{margin:0;font-size:20px}
+.iconbtn{background:var(--surface);color:var(--ink);border:1px solid var(--line);width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:12px}
+.backdrop{position:fixed;inset:0;background:rgba(10,14,18,.45);z-index:9}
+#drawer{position:fixed;top:0;left:0;bottom:0;width:min(280px,82vw);background:var(--surface);border-right:1px solid var(--line);z-index:10;transform:translateX(-102%);display:flex;flex-direction:column;gap:2px;padding:12px;overflow-y:auto}
+#drawer.open{transform:none;box-shadow:4px 0 24px rgba(0,0,0,.18)}
+@media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 12px}
+.navitem{background:none;border:0;color:var(--ink);text-align:left;padding:13px 12px;border-radius:10px;font-weight:500;font-size:16px}
+.navitem[aria-current="page"]{background:var(--accent-soft);font-weight:600}
+.navsep{height:1px;background:var(--line);margin:8px 4px}
+.member{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.member:last-child{border-bottom:0}
+.member .chips label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);padding:8px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg)}
+.member input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:0;padding:0}
+#meChip{font-size:13px;padding:5px 10px}
+.item button.link{padding:6px 2px}
+.item{gap:8px}
+.qty{display:flex;align-items:center;gap:6px;margin-left:auto}
+.qty button{width:38px;height:38px;padding:0;font-size:20px;background:var(--bg);color:var(--ink);border-color:var(--line)}
+.qty span{min-width:28px;text-align:center;font:600 16px var(--mono)}
+.empty{color:var(--muted);font-size:14px}
+.notice{padding:10px 12px;border-radius:10px;background:var(--accent-soft);font-size:14px}
+.match{border:2px solid var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.where{color:var(--muted);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--bg);border-radius:10px;padding:10px}
+.stat b{display:block;font:700 20px/1.1 var(--mono)}
+.stat span{font-size:12px;color:var(--muted)}
+.floor-h{font:600 14px var(--display);margin:6px 0 2px}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--ok)}
+.prow{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.pnums{display:flex;gap:14px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.pnums b{color:var(--ink);font:600 14px var(--mono)}
+.pnums .left b{color:var(--warn)}
+.pnums .done b{color:var(--ok)}
+.pact{display:flex;gap:6px;align-items:center}
+.pact input{width:64px;flex:none;text-align:center}
+.pill{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--bg);color:var(--muted)}
+.pill.ok{color:var(--ok)}
+.log{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.log div{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+.log span.t{color:var(--muted);white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-size:14px;max-width:90vw;z-index:5}
+.authwrap{min-height:100vh;display:grid;place-items:center;padding:16px}
+.authcard{max-width:380px;width:100%}
+.authcard input{width:100%}
+.msg{color:var(--warn);font-size:14px;min-height:1.2em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid2 input{width:100%}
+.big{font:700 26px/1.1 var(--mono)}
+.srow{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:0}
+.money{font:600 15px var(--mono);color:var(--ok);white-space:nowrap}
+.hidden{display:none !important}
+@media (prefers-reduced-motion:no-preference){.type,.chip,button{transition:background .12s}}
+</style>
+</head>
+<body>
+<div id="authView" class="authwrap hidden">
+  <div class="card authcard">
+    <div class="apptitle">Замеры окон</div>
+    <h1 id="authTitle">Вход</h1>
+    <div class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
+      <button id="aLogin" role="tab" aria-selected="true">Вход</button>
+      <button id="aReg" role="tab" aria-selected="false">Регистрация</button>
+    </div>
+    <label for="aName">Имя и фамилия</label>
+    <input id="aName" autocomplete="username" placeholder="Например, Иван Петров">
+    <label for="aPass">Пароль</label>
+    <input id="aPass" type="password" autocomplete="current-password" placeholder="Не короче 6 символов">
+    <div id="aPass2Wrap" class="hidden" style="display:flex;flex-direction:column;gap:6px">
+      <label for="aPass2">Повторите пароль</label>
+      <input id="aPass2" type="password" autocomplete="new-password">
+    </div>
+    <button id="aGo">Войти</button>
+    <div class="msg" id="aMsg"></div>
+    <div class="empty" id="aHint">Нет аккаунта? Откройте «Регистрация». После регистрации владелец выдаст вам доступ.</div>
+  </div>
+</div>
+<div id="waitView" class="authwrap hidden">
+  <div class="card authcard">
+    <h1>Ожидает подтверждения</h1>
+    <p id="waitText" style="margin:0"></p>
+    <button class="sec" id="waitLogout">Выйти</button>
+  </div>
+</div>
+<div id="loadView" class="authwrap"><div class="empty">Загрузка…</div></div>
+<main id="app" class="hidden">
+  <header class="topbar">
+    <button id="menuBtn" class="iconbtn" aria-label="Открыть меню" aria-controls="drawer" aria-expanded="false">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div class="grow"><div class="apptitle">Замеры окон</div><h1 id="pageTitle">Замер</h1></div>
+  </header>
+  <div class="row" id="meRow"><span id="meChip" class="pill">Загружаю профиль…</span></div>
+  <div id="status" class="notice hidden"></div>
+
+  <div class="card" id="objCard">
+    <label for="objSelect">Объект</label>
+    <div class="row">
+      <select id="objSelect" class="grow"></select>
+      <button class="sec" id="objNewBtn">Новый</button>
+    </div>
+    <div class="row hidden" id="objNewRow">
+      <input id="objNewName" class="grow" placeholder="Название, например «Школа №12»">
+      <button id="objCreate">Создать</button>
+    </div>
+  </div>
+
+  <div class="tabs hidden" role="tablist" id="tabs">
+    <button role="tab" aria-selected="true" data-tab="measure">Замер</button>
+    <button role="tab" aria-selected="false" data-tab="types">Окна</button>
+    <button role="tab" aria-selected="false" data-tab="cut">Нарезка</button>
+    <button role="tab" aria-selected="false" data-tab="glue">Оклейка</button>
+    <button role="tab" aria-selected="false" data-tab="summary">Сводка</button>
+  </div>
+
+  <!-- ===== ЗАМЕР ===== -->
+  <section id="tab-measure" class="col" style="display:flex;flex-direction:column;gap:12px">
+    <div class="notice hidden" id="measureRO">У вас нет прав на замеры — только просмотр. Права выдаёт владелец.</div>
+    <div class="card">
+      <h2>Этаж</h2>
+      <div class="chips" id="floorChips"></div>
+      <div class="row hidden" id="floorNewRow">
+        <input id="floorNewName" class="grow" placeholder="Номер этажа" inputmode="numeric">
+        <button id="floorCreate">Добавить</button>
+      </div>
+      <h2>Кабинет</h2>
+      <div class="chips" id="roomChips"></div>
+      <div class="row hidden" id="roomNewRow">
+        <input id="roomNewName" class="grow" placeholder="Номер кабинета, например 205">
+        <button id="roomCreate">Добавить</button>
+      </div>
+    </div>
+
+    <div class="card" id="roomCard">
+      <div class="row"><h2 class="grow" id="roomTitle">Выберите кабинет</h2><button class="link" id="roomDel">Удалить кабинет</button></div>
+      <div class="items" id="roomItems"></div>
+
+      <div class="row" style="align-items:flex-end">
+        <div class="grow"><label for="inW">Ширина, см</label><input id="inW" inputmode="decimal" autocomplete="off" style="width:100%"></div>
+        <div class="grow"><label for="inH">Высота, см</label><input id="inH" inputmode="decimal" autocomplete="off" style="width:100%"></div>
+        <button id="addSize">Добавить</button>
+      </div>
+      <div id="matchBox" class="hidden"></div>
+
+      <div class="row">
+        <label for="copyFrom">Скопировать окна из кабинета</label>
+        <select id="copyFrom" class="grow"></select>
+        <button class="sec" id="copyBtn">Скопировать</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Уже записанные окна</h2>
+      <div class="empty" id="typesHint">Нажмите на окно, чтобы добавить его в кабинет.</div>
+      <div class="types" id="typeButtons"></div>
+    </div>
+  </section>
+
+  <!-- ===== ОКНА ===== -->
+  <section id="tab-types" class="hidden" style="flex-direction:column;gap:12px">
+    <div class="card">
+      <h2>Все окна объекта</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Код</th><th>Размер, см</th><th class="n">м²</th><th class="n">Шт</th><th>Где</th><th></th></tr></thead>
+        <tbody id="typesBody"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ===== НАРЕЗКА / ОКЛЕЙКА ===== -->
+  <section id="tab-cut" class="hidden" style="flex-direction:column;gap:12px"></section>
+  <section id="tab-glue" class="hidden" style="flex-direction:column;gap:12px"></section>
+
+  <!-- ===== СВОДКА ===== -->
+  <section id="tab-summary" class="hidden" style="flex-direction:column;gap:12px">
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><b id="stTypes">0</b><span>видов окон</span></div>
+        <div class="stat"><b id="stCount">0</b><span>окон всего</span></div>
+        <div class="stat"><b id="stArea">0</b><span>м² всего</span></div>
+      </div>
+      <div class="row">
+        <button class="sec" id="copyTable">Скопировать таблицу для Excel</button>
+        <button class="sec" id="copyCodes">Скопировать итог по кодам</button>
+      </div>
+    </div>
+    <div class="card" id="summaryFloors"></div>
+  </section>
+
+  <!-- ===== СМЕНА / УПРАВЛЕНИЕ ===== -->
+  <section id="tab-shift" class="hidden" style="flex-direction:column;gap:12px"></section>
+  <section id="tab-admin" class="hidden" style="flex-direction:column;gap:12px"></section>
+</main>
+<div class="backdrop hidden" id="backdrop"></div>
+<nav id="drawer" aria-label="Разделы" aria-hidden="true">
+  <div class="drawer-head"><b>Замеры окон</b><button class="iconbtn" id="menuClose" aria-label="Закрыть меню">
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+  <button class="navitem" data-tab="measure">Замер</button>
+  <button class="navitem" data-tab="types">Окна</button>
+  <button class="navitem" data-tab="cut">Нарезка</button>
+  <button class="navitem" data-tab="glue">Оклейка</button>
+  <button class="navitem" data-tab="summary">Сводка</button>
+  <div class="navsep"></div>
+  <button class="navitem hidden" data-tab="shift" id="navShift">Моя смена</button>
+  <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
+  <div class="navsep"></div>
+  <button class="navitem" id="logoutBtn">Выйти</button>
+</nav>
+<div class="toast hidden" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import * as A from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import * as F from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+/* ===== НАСТРОЙКИ FIREBASE: вставляются из консоли Firebase ===== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCn_rpzX5zzVHdXUucaDkzzAJKAVHtGcS4",
+  authDomain: "window-5b98a.firebaseapp.com",
+  projectId: "window-5b98a",
+  storageBucket: "window-5b98a.firebasestorage.app",
+  messagingSenderId: "34326910701",
+  appId: "1:34326910701:web:2c24ff1051f087a5ef5ee4"
+};
+
+const $ = id => document.getElementById(id);
+const LETTER = "А";                     // русская А
+const TOL = 0.5;                        // допуск 5 мм = 0,5 см
+const code = n => LETTER + n;
+const num = s => parseFloat(String(s).trim().replace(",", "."));
+const cm = x => String(Math.round(x * 10) / 10).replace(".", ",");
+const m2 = x => (Math.round(x * 10000) / 10000).toLocaleString("ru-RU", {maximumFractionDigits: 4});
+const byNum = (a, b) => { const x = parseFloat(a), y = parseFloat(b); return (isNaN(x) || isNaN(y)) ? String(a).localeCompare(String(b), "ru") : x - y || String(a).localeCompare(String(b), "ru"); };
+const TAB_ID = "tab-" + Math.random().toString(36).slice(2);
+
+let db = null, canWrite = true;
+let objects = [], curObj = null;
+let types = {};          // num -> {num, w, h}
+let rooms = [];          // {id, floor, name, items:{num:count}}
+let curFloor = null, curRoomId = null;
+let unsubs = [];
+let typesLoaded = false, roomsLoaded = false;
+let log = [];            // {id, kind:"cut"|"glue", num, q, by, at}
+let fs = null, auth = null, myId = null, names = {};
+let amOwner = false, me = null, usersMap = {}, prices = {cut: 0, glue: 0}, pricesLoaded = false;
+let shifts = [], myShift = null, shiftWork = {};
+const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все вкладки"};
+// Права на вкладки. Владелец может всё; остальным права выдаёт владелец на панели «Команда и права».
+function allowed(area){
+  if (!canWrite) return false;
+  if (amOwner) return true;
+  if (!me || !me.approved) return false;
+  const r = me.roles || [];
+  return r.includes("admin") || r.includes(area);
+}
+const KIND = {cut: {title: "Нарезка", verb: "Нарезано", act: "нарезал(а)"}, glue: {title: "Оклейка", verb: "Наклеено", act: "наклеил(а)"}};
+
+function toast(t){ const el = $("toast"); el.textContent = t; el.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.add("hidden"), 2600); }
+function status(t){ const el = $("status"); if (!t) el.classList.add("hidden"); else { el.textContent = t; el.classList.remove("hidden"); } }
+function errMsg(e){
+  const c = String(e && e.code || "");
+  if (c.includes("permission-denied")) return "Нет прав на это действие. Права выдаёт владелец.";
+  if (c.includes("resource-exhausted")) return "Исчерпан бесплатный лимит базы на сегодня. Попробуйте позже.";
+  if (c.includes("unavailable")) return "Нет связи с базой. Проверьте интернет.";
+  return "Не удалось сохранить. Проверьте интернет и повторите.";
+}
+
+/* ---------- обёртка над Firestore (тот же интерфейс, что и раньше) ---------- */
+const wrapDoc = d => ({id: d.id, exists: d.exists(), data: () => d.data(), metadata: d.metadata});
+const wrapQuery = q => ({docs: q.docs.map(wrapDoc), size: q.size, empty: q.empty, metadata: q.metadata});
+function docApi(ref){
+  return {
+    id: ref.id, path: ref.path,
+    get: async () => wrapDoc(await F.getDoc(ref)),
+    set: d => F.setDoc(ref, d), update: d => F.updateDoc(ref, d), delete: () => F.deleteDoc(ref),
+    onSnapshot: (n, e) => F.onSnapshot(ref, {includeMetadataChanges: true}, d => n(wrapDoc(d)), e),
+    collection: p => colApi(F.collection(ref, p)),
+  };
+}
+function colApi(ref){
+  return {
+    path: ref.path,
+    doc: id => docApi(id ? F.doc(ref, id) : F.doc(ref)),
+    get: async () => wrapQuery(await F.getDocs(ref)),
+    onSnapshot: (n, e) => F.onSnapshot(ref, {includeMetadataChanges: true}, q => n(wrapQuery(q)), e),
+  };
+}
+const makeDb = () => ({doc: p => docApi(F.doc(fs, p)), collection: p => colApi(F.collection(fs, p))});
+
+/* ---------- запись: одна за раз на документ, последние данные ---------- */
+const writers = {};
+function writeDoc(path, getBody){
+  const w = writers[path] || (writers[path] = {running:false, dirty:false});
+  w.getBody = getBody;
+  if (w.running) { w.dirty = true; return; }
+  (async () => {
+    w.running = true;
+    try {
+      do { w.dirty = false; await db.doc(path).set(w.getBody()); } while (w.dirty);
+    } catch(e) { toast(errMsg(e)); }
+    w.running = false;
+  })();
+}
+const busy = path => writers[path] && (writers[path].running || writers[path].dirty);
+
+/* ---------- данные объекта ---------- */
+const objPath = () => "objects/" + curObj;
+const roomPath = id => objPath() + "/rooms/" + id;
+const room = () => rooms.find(r => r.id === curRoomId);
+function floors(){
+  const o = objects.find(o => o.id === curObj);
+  const set = new Set([...(o && o.floors || []), ...rooms.map(r => r.floor)]);
+  return [...set].sort(byNum);
+}
+function counts(){ // num -> total
+  const c = {};
+  for (const r of rooms) for (const [n, q] of Object.entries(r.items || {})) if (q > 0) c[n] = (c[n] || 0) + q;
+  return c;
+}
+function saveRoom(r){
+  writeDoc(roomPath(r.id), () => ({floor: r.floor, name: r.name, items: {...r.items}, updated: Date.now()}));
+}
+
+function openObject(id){
+  unsubs.forEach(u => u()); unsubs = [];
+  curObj = id; types = {}; rooms = []; log = []; curFloor = null; curRoomId = null; typesLoaded = roomsLoaded = false;
+  try { localStorage.setItem("zamery-obj", id || ""); } catch(e) {}
+  render();
+  if (!id) return;
+  const timer = setTimeout(() => { if (!typesLoaded || !roomsLoaded) status("Данные пока не загрузились — возможно, нет интернета. Показываю то, что есть."); }, 10000);
+  const done = () => { if (typesLoaded && roomsLoaded) { clearTimeout(timer); status(""); } };
+  unsubs.push(db.collection(objPath() + "/types").onSnapshot(s => {
+    types = {};
+    for (const d of s.docs) { const v = d.data(); if (v && v.num) types[v.num] = {num: v.num, w: v.w, h: v.h}; }
+    if (!s.metadata.fromCache) { typesLoaded = true; done(); }
+    render();
+  }, e => { clearTimeout(timer); status("Не удалось загрузить окна объекта."); }));
+  unsubs.push(db.collection(objPath() + "/rooms").onSnapshot(s => {
+    const local = Object.fromEntries(rooms.map(r => [r.id, r]));
+    rooms = s.docs.map(d => {
+      const v = d.data() || {};
+      if (local[d.id] && busy(roomPath(d.id))) return local[d.id];   // свои несохранённые правки важнее
+      return {id: d.id, floor: String(v.floor ?? ""), name: String(v.name ?? ""), items: {...(v.items || {})}};
+    });
+    // кабинеты, созданные здесь и ещё не дошедшие до базы
+    for (const r of Object.values(local)) if (!rooms.find(x => x.id === r.id) && busy(roomPath(r.id))) rooms.push(r);
+    if (!s.metadata.fromCache) { roomsLoaded = true; done(); }
+    if (curRoomId && !rooms.find(r => r.id === curRoomId)) curRoomId = null;
+    render();
+  }, e => { clearTimeout(timer); status("Не удалось загрузить кабинеты."); }));
+  unsubs.push(db.collection(objPath() + "/log").onSnapshot(s => {
+    log = s.docs.map(d => ({id: d.id, ...(d.data() || {})})).filter(x => KIND[x.kind] && x.num && x.q);
+    resolveNames(); render();
+  }, e => toast("Не удалось загрузить отметки нарезки и оклейки.")));
+}
+
+/* ---------- нарезка и оклейка: каждая отметка — отдельная запись ---------- */
+// room: undefined — все отметки; "" — без кабинета; id — только этот кабинет
+function doneBy(kind, room){
+  const d = {};
+  for (const x of log) if (x.kind === kind && (room === undefined || (x.room || "") === room)) d[x.num] = (d[x.num] || 0) + x.q;
+  return d;
+}
+// Сколько ещё можно наклеить: нельзя клеить больше, чем нарезано
+function glueAvailTotal(k){ return Math.max(0, (doneBy("cut")[k] || 0) - (doneBy("glue")[k] || 0)); }
+function canGlueIn(r, k){
+  const q = r.items[k] || 0, d = doneBy("glue", r.id)[k] || 0, l = q - d;
+  if (l <= 0) return 0;
+  const own = Math.max(0, Math.min(q, doneBy("cut", r.id)[k] || 0) - d);   // нарезано именно для этого кабинета
+  return Math.max(0, Math.min(l, own + freeCut(k), glueAvailTotal(k)));
+}
+async function mark(kind, n, q, opt = {}){
+  if (!q) return;
+  if (kind === "glue" && q > 0) {
+    const r = opt.room ? rooms.find(x => x.id === opt.room) : null;
+    const avail = r ? canGlueIn(r, n) : glueAvailTotal(n);
+    if (q > avail) {
+      const anyCut = (doneBy("cut")[n] || 0) > 0;
+      toast(avail ? `${code(n)}: нарезано только на ${avail} шт — больше наклеить нельзя`
+                  : anyCut ? `${code(n)}: всё нарезанное уже наклеено — дождитесь нарезки` : `${code(n)}: ещё не нарезано — сначала отметьте нарезку`);
+      return;
+    }
+  }
+  if (!amOwner && q > 0 && !myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
+  const ref = db.collection(objPath() + "/log").doc();
+  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};
+  if (myShift) entry.shift = myShift.id;
+  if (opt.reset) entry.reset = true;
+  if (opt.room) entry.room = opt.room;
+  log.push({id: ref.id, ...entry}); render();
+  scheduleShiftWork();
+  try { await ref.set(entry); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`); }
+  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
+}
+// Сброс окна по всему объекту: обнуляет и отметки без кабинета, и по каждому кабинету
+function resetEverywhere(kind, n){
+  const scopes = new Set(log.filter(x => x.kind === kind && x.num == n).map(x => x.room || ""));
+  for (const sc of scopes) { const cur = doneBy(kind, sc)[n] || 0; if (cur) mark(kind, n, -cur, {reset: true, room: sc || undefined, silent: true}); }
+  toast(`${code(n)}: сброшено до 0`);
+}
+async function unmark(id){
+  try { await db.doc(objPath() + "/log/" + id).delete(); log = log.filter(x => x.id !== id); render(); toast("Отметка отменена"); }
+  catch(e) { toast(errMsg(e)); }
+}
+function resolveNames(){ /* имена приходят из профилей сотрудников */ }
+const who = id => id && id === myId ? "Вы" : (names[id] || "Кто-то");
+const when = t => { const d = new Date(t); return d.toLocaleDateString("ru-RU", {day: "2-digit", month: "2-digit"}) + " " + d.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"}); };
+const roomLabel = id => { const r = rooms.find(x => x.id === id); return r ? `${r.floor} эт., каб. ${r.name}` : "удалённый кабинет"; };
+
+const progView = {cut: "all", glue: "all"}, progFloor = {cut: null, glue: null};
+const pct = (d, n) => n ? Math.min(100, Math.round(d / n * 100)) : 0;
+const bar = (d, n) => el("div", {className: "bar"}, el("i", {style: `width:${pct(d, n)}%`}));
+const statusPill = (d, n) => n - d <= 0 ? el("span", {className: "pill ok", textContent: n - d < 0 ? `готово, лишние ${d - n}` : "готово"}) : el("span", {className: "pill", textContent: `${pct(d, n)}%`});
+function stats3(need, made, kind){
+  return el("div", {className: "stats"},
+    el("div", {className: "stat"}, el("b", {textContent: need}), el("span", {textContent: "нужно, шт"})),
+    el("div", {className: "stat"}, el("b", {textContent: made, style: "color:var(--ok)"}), el("span", {textContent: KIND[kind].verb.toLowerCase() + ", шт"})),
+    el("div", {className: "stat"}, el("b", {textContent: Math.max(0, need - made), style: "color:var(--warn)"}), el("span", {textContent: "осталось, шт"})));
+}
+
+function renderProgress(kind, c){
+  const box = $("tab-" + kind); box.innerHTML = "";
+  const done = doneBy(kind), cutDone = doneBy("cut");
+  const tlist = Object.values(types).filter(t => c[t.num] || done[t.num]).sort((a, b) => a.num - b.num);
+  const need = tlist.reduce((s, t) => s + (c[t.num] || 0), 0);
+  const made = tlist.reduce((s, t) => s + Math.min(done[t.num] || 0, c[t.num] || 0), 0);
+  const doneArea = tlist.reduce((s, t) => s + Math.min(done[t.num] || 0, c[t.num] || 0) * t.w * t.h / 10000, 0);
+  const leftArea = tlist.reduce((s, t) => s + Math.max(0, (c[t.num] || 0) - (done[t.num] || 0)) * t.w * t.h / 10000, 0);
+
+  box.append(el("div", {className: "card"},
+    el("h2", {textContent: KIND[kind].title + " по объекту"}),
+    stats3(need, made, kind),
+    el("div", {className: "pnums"},
+      el("span", {}, KIND[kind].verb + ": ", el("b", {textContent: m2(doneArea) + " м²"})),
+      el("span", {}, "Осталось: ", el("b", {textContent: m2(leftArea) + " м²"}))),
+    bar(made, need)));
+
+  // подвкладки
+  const sub = el("div", {className: "tabs", style: "grid-template-columns:1fr 1fr", role: "tablist"});
+  for (const [v, label] of [["all", "Общее"], ["rooms", "По этажам и кабинетам"]]) {
+    const b = el("button", {textContent: label, role: "tab"});
+    b.setAttribute("aria-selected", progView[kind] === v);
+    b.onclick = () => { progView[kind] = v; render(); };
+    sub.append(b);
+  }
+  box.append(sub);
+  if (db && !allowed(kind)) box.append(el("div", {className: "notice", textContent: `У вас нет прав отмечать ${kind === "cut" ? "нарезку" : "оклейку"} — только просмотр. Права выдаёт владелец.`}));
+
+  if (progView[kind] === "all") renderProgressAll(kind, c, box, tlist, done, cutDone);
+  else renderProgressRooms(kind, box);
+
+}
+
+function renderProgressAll(kind, c, box, tlist, done, cutDone){
+  // готовые окна — в конец списка
+  const isDone = t => (c[t.num] || 0) - (done[t.num] || 0) <= 0;
+  tlist = [...tlist].sort((a, b) => (isDone(a) - isDone(b)) || a.num - b.num);
+  const list = el("div", {className: "card"}, el("h2", {textContent: "По окнам"}));
+  if (kind === "glue") list.append(el("div", {className: "empty", textContent: "«Можно клеить» — сколько уже нарезано, но ещё не наклеено."}));
+  if (!tlist.length) list.append(el("div", {className: "empty", textContent: "Сначала запишите окна на вкладке «Замер»."}));
+  for (const t of tlist) {
+    const n = c[t.num] || 0, d = done[t.num] || 0, l = n - d;
+    const qIn = el("input", {value: "1", inputMode: "numeric", ariaLabel: "Сколько штук"});
+    const plus = el("button", {textContent: "Отметить"});
+    plus.onclick = () => { const q = parseInt(qIn.value, 10); if (!(q > 0)) { toast("Введите количество"); return; } mark(kind, t.num, q); };
+    const allBtn = el("button", {className: "sec", textContent: "Все"});
+    const cap = kind === "glue" ? Math.min(Math.max(0, l), glueAvailTotal(t.num)) : Math.max(0, l);
+    allBtn.onclick = () => { if (cap > 0) mark(kind, t.num, cap); };
+    allBtn.disabled = cap <= 0 || !allowed(kind); plus.disabled = !allowed(kind) || (kind === "glue" && glueAvailTotal(t.num) <= 0); qIn.disabled = plus.disabled;
+    const resetBtn = el("button", {className: "link", textContent: "Сбросить"});
+    resetBtn.title = "Обнулить все отметки по этому окну, в том числе по кабинетам";
+    resetBtn.onclick = () => confirmTap(resetBtn, () => resetEverywhere(kind, t.num));
+    resetBtn.disabled = !allowed(kind) || d === 0;
+    const nums = el("div", {className: "pnums"},
+      el("span", {}, "Нужно ", el("b", {textContent: n})),
+      el("span", {className: "done"}, KIND[kind].verb + " ", el("b", {textContent: d})),
+      el("span", {className: "left"}, "Осталось ", el("b", {textContent: Math.max(0, l)})));
+    if (kind === "glue") nums.append(el("span", {}, "Можно клеить ", el("b", {textContent: Math.max(0, (cutDone[t.num] || 0) - d)})));
+    list.append(el("div", {className: "prow"},
+      el("div", {className: "row"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}), el("span", {className: "grow"}), statusPill(d, n)),
+      nums, bar(d, n),
+      el("div", {className: "pact"}, qIn, el("span", {className: "size", textContent: "шт"}), plus, allBtn, el("span", {className: "grow"}), resetBtn)));
+  }
+  box.append(list);
+}
+
+// Нарезано без кабинета и ещё не использовано: общий запас минус оклейка, которую не покрыла нарезка своего кабинета
+function freeCut(k){
+  const loose = doneBy("cut", "")[k] || 0;
+  let used = doneBy("glue", "")[k] || 0;
+  for (const r of rooms) { const g = doneBy("glue", r.id)[k] || 0, c = doneBy("cut", r.id)[k] || 0; used += Math.max(0, g - c); }
+  return Math.max(0, loose - used);
+}
+// Сколько окон на этаже уже можно клеить, по кодам. Нарезанное для кабинета считается в нём,
+// общий запас (нарезка без кабинета) делится между кабинетами этажа и не считается дважды.
+function floorGlueReady(f){
+  const ready = {}, looseNeed = {}; let need = 0;
+  for (const r of rooms.filter(r => r.floor === f)) {
+    const rd = doneBy("glue", r.id), rc = doneBy("cut", r.id);
+    for (const [k, q] of Object.entries(r.items)) {
+      if (!(q > 0)) continue;
+      const l = q - (rd[k] || 0); if (l <= 0) continue;
+      need += l;
+      const own = Math.min(l, Math.max(0, Math.min(q, rc[k] || 0) - (rd[k] || 0)));
+      ready[k] = (ready[k] || 0) + own;
+      if (l > own) looseNeed[k] = (looseNeed[k] || 0) + (l - own);
+    }
+  }
+  for (const k of Object.keys(looseNeed)) ready[k] = (ready[k] || 0) + Math.min(looseNeed[k], freeCut(k), Math.max(0, glueAvailTotal(k) - (ready[k] || 0)));
+  const total = Object.values(ready).reduce((a, b) => a + b, 0);
+  return {ready, wait: Math.max(0, need - total)};
+}
+function renderProgressRooms(kind, box){
+  const fl = floors();
+  if (!fl.length) { box.append(el("div", {className: "card"}, el("div", {className: "empty", textContent: "Этажей и кабинетов пока нет."}))); return; }
+  if (!fl.includes(progFloor[kind])) progFloor[kind] = fl[0];
+
+  // сводка по всем этажам
+  const fcard = el("div", {className: "card"}, el("h2", {textContent: "По этажам"}));
+  for (const f of fl) {
+    let n = 0, d = 0;
+    for (const r of rooms.filter(r => r.floor === f)) {
+      const rd = doneBy(kind, r.id);
+      for (const [k, q] of Object.entries(r.items)) if (q > 0) { n += q; d += Math.min(q, rd[k] || 0); }
+    }
+    const b = el("button", {className: "prow", style: "background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;color:var(--ink);text-align:left;font-weight:400;padding:10px 0"},
+      el("div", {className: "row"}, el("b", {textContent: `${f} этаж`}), el("span", {className: "size", textContent: `${d} из ${n}`}), el("span", {className: "grow"}), statusPill(d, n)),
+      bar(d, n));
+    if (kind === "glue" && d < n) {
+      const g = floorGlueReady(f);
+      const total = Object.values(g.ready).reduce((a, b) => a + b, 0);
+      b.append(el("div", {className: "legend"},
+        el("span", {className: "tag ready", textContent: `Можно клеить: ${total}`}),
+        el("span", {className: "tag wait", textContent: `Ждут нарезки: ${g.wait}`})));
+      const list = Object.keys(g.ready).filter(k => g.ready[k] > 0).sort(byNum).map(k => `${code(k)} × ${g.ready[k]}`).join(", ");
+      if (list) b.append(el("div", {className: "code", style: "font-size:13px;line-height:1.5;color:var(--accent)", textContent: list}));
+    }
+    if (f === progFloor[kind]) b.style.boxShadow = "inset 3px 0 0 var(--accent)", b.style.paddingLeft = "10px";
+    b.onclick = () => { progFloor[kind] = f; render(); };
+    fcard.append(b);
+  }
+  const loose = Object.values(doneBy(kind, "")).reduce((a, b) => a + b, 0);
+  if (loose > 0) fcard.append(el("div", {className: "empty", textContent: `Ещё ${loose} шт отмечено во вкладке «Общее» без кабинета — они входят в итог по объекту, но не в этажи.`}));
+  box.append(fcard);
+
+  // кабинеты выбранного этажа
+  const f = progFloor[kind];
+  const roomLeft = r => { const rd = doneBy(kind, r.id); return Object.entries(r.items).reduce((s, [k, q]) => s + Math.max(0, q - (rd[k] || 0)), 0); };
+  const roomDone = r => Object.values(r.items).some(q => q > 0) && roomLeft(r) === 0;
+  const fr = rooms.filter(r => r.floor === f).sort((a, b) => (roomDone(a) - roomDone(b)) || byNum(a.name, b.name));
+  if (!fr.length) box.append(el("div", {className: "card"}, el("div", {className: "empty", textContent: `На ${f} этаже нет кабинетов.`})));
+  for (const r of fr) {
+    const rd = doneBy(kind, r.id);
+    const nums = Object.keys(r.items).filter(k => r.items[k] > 0)
+      .sort((a, b) => ((r.items[a] - (rd[a] || 0) <= 0) - (r.items[b] - (rd[b] || 0) <= 0)) || byNum(a, b));
+    const rn = nums.reduce((s, k) => s + r.items[k], 0), rdone = nums.reduce((s, k) => s + Math.min(r.items[k], rd[k] || 0), 0);
+    const allRoom = el("button", {className: "sec", textContent: "Весь кабинет"});
+    allRoom.disabled = !allowed(kind) || rdone >= rn;
+    allRoom.onclick = () => {
+      let any = 0, skipped = 0;
+      for (const k of nums) {
+        const l = r.items[k] - (doneBy(kind, r.id)[k] || 0); if (l <= 0) continue;
+        const q = kind === "glue" ? canGlueIn(r, k) : l;
+        if (q > 0) { mark(kind, k, q, {room: r.id, silent: true}); any += q; }
+        if (q < l) skipped += l - q;
+      }
+      if (any) toast(skipped ? `Кабинет ${r.name}: отмечено ${any} шт, ещё ${skipped} не нарезаны` : `Кабинет ${r.name}: всё отмечено`);
+      else if (skipped) toast("В этом кабинете ещё нечего клеить — окна не нарезаны");
+    };
+    const card = el("div", {className: "card"},
+      el("div", {className: "row"}, el("h2", {className: "grow", textContent: `Кабинет ${r.name}`}), el("span", {className: "size", textContent: `${rdone} из ${rn}`}), statusPill(rdone, rn)),
+      bar(rdone, rn));
+    if (!nums.length) card.append(el("div", {className: "empty", textContent: "В кабинете нет окон."}));
+    if (kind === "glue") {
+      const rc = doneBy("cut", r.id), tc = doneBy("cut"), tg = doneBy("glue");
+      let ready = 0, wait = 0;
+      for (const k of nums) {
+        const t = types[k] || {}, n = r.items[k], d = rd[k] || 0, l = n - d;
+        // сколько нарезано для этого кабинета; если резали без кабинета — берём свободный общий запас
+        const roomCut = Math.min(n, rc[k] || 0);
+        const freePool = freeCut(k);
+        const canGlue = canGlueIn(r, k);
+        const st = l <= 0 ? "done" : canGlue > 0 ? "ready" : "wait";
+        if (st === "ready") ready += canGlue; if (st !== "done") wait += Math.max(0, l - canGlue);
+        const tag = st === "done" ? el("span", {className: "tag done", textContent: "✓ Наклеено"})
+                  : st === "ready" ? el("span", {className: "tag ready", textContent: `Можно клеить: ${canGlue}`})
+                  : el("span", {className: "tag wait", textContent: "Ждёт нарезки"});
+        const cutInfo = st === "done" ? "" : rc[k] ? `Нарезано для кабинета: ${roomCut} из ${n}` : (tc[k] ? `Нарезано по объекту, свободно: ${freePool}` : "Ещё не нарезано");
+        const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || canGlue <= 0;
+        const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { const q = canGlueIn(r, k); if (q > 0) mark(kind, k, q, {room: r.id}); }; all.disabled = !allowed(kind) || canGlue <= 0;
+        const rs = el("button", {className: "link", textContent: "Сбросить"}); rs.disabled = !allowed(kind) || d === 0;
+        rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id)[k] || 0; if (cur) mark(kind, k, -cur, {reset: true, room: r.id}); });
+        card.append(el("div", {className: "gitem st-" + st},
+          el("div", {className: "row"}, el("span", {className: "code", textContent: code(k)}), el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}), el("span", {className: "grow"}), tag),
+          el("div", {className: "pnums"}, el("span", {className: "done"}, "Наклеено ", el("b", {textContent: `${d}/${n}`})), cutInfo ? el("span", {textContent: cutInfo}) : ""),
+          el("div", {className: "row"}, p1, all, el("span", {className: "grow"}), rs)));
+      }
+      if (nums.length) card.insertBefore(el("div", {className: "legend"},
+        el("span", {className: "tag ready", textContent: `Можно клеить: ${ready}`}),
+        el("span", {className: "tag wait", textContent: `Ждут нарезки: ${wait}`}),
+        el("span", {className: "tag done", textContent: `Наклеено: ${rdone}`})), card.children[2] || null);
+      card.append(el("div", {className: "row"}, allRoom));
+      box.append(card);
+      continue;
+    }
+    for (const k of nums) {
+      const t = types[k] || {}, n = r.items[k], d = rd[k] || 0, l = n - d;
+      const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || l <= 0;
+      const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { if (l > 0) mark(kind, k, l, {room: r.id}); }; all.disabled = !allowed(kind) || l <= 0;
+      const rs = el("button", {className: "link", textContent: "Сбросить"}); rs.disabled = !allowed(kind) || d === 0;
+      rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id)[k] || 0; if (cur) mark(kind, k, -cur, {reset: true, room: r.id}); });
+      card.append(el("div", {className: "item"},
+        el("span", {className: "code", textContent: code(k)}),
+        el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}),
+        el("span", {className: "grow"}),
+        el("span", {className: "code", style: `font-size:14px;color:var(${l <= 0 ? "--ok" : "--ink"})`, textContent: `${d}/${n}`}),
+        p1, all, rs));
+    }
+    card.append(el("div", {className: "row"}, allRoom));
+    box.append(card);
+  }
+}
+
+/* ---------- новый вид окна: номер по порядку, без повторов ---------- */
+async function createType(w, h){
+  let n = Math.max(0, ...Object.keys(types).map(Number)) + 1;
+  for (let tries = 0; tries < 20; tries++, n++) {
+    const ref = F.doc(fs, objPath() + "/types/n" + n);
+    const body = {num: n, w, h, created: Date.now()};
+    try {
+      const ok = await F.runTransaction(fs, async tx => { const d = await tx.get(ref); if (d.exists()) return false; tx.set(ref, body); return true; });
+      if (!ok) continue;
+    } catch(e) {
+      if (String(e && e.code).includes("permission")) throw e;
+      F.setDoc(ref, body).catch(() => {});   // нет связи: запишется, когда появится интернет
+    }
+    types[n] = {num: n, w, h};
+    return n;
+  }
+  throw {code: "unavailable"};
+}
+
+function addToRoom(n, q = 1){
+  const r = room(); if (!r) { toast("Сначала выберите кабинет"); return; }
+  r.items[n] = Math.max(0, (r.items[n] || 0) + q);
+  if (!r.items[n]) delete r.items[n];
+  saveRoom(r); render();
+}
+
+/* ---------- ввод размера ---------- */
+async function onAddSize(){
+  const w = num($("inW").value), h = num($("inH").value);
+  if (!(w > 0) || !(h > 0)) { toast("Введите ширину и высоту в сантиметрах"); return; }
+  if (!room()) { toast("Сначала выберите кабинет"); return; }
+  const all = Object.values(types);
+  const exact = all.find(t => t.w === w && t.h === h);
+  if (exact) { addToRoom(exact.num); toast(`Добавлено: ${code(exact.num)}`); clearInputs(); return; }
+  const near = all.filter(t => Math.abs(t.w - w) <= TOL && Math.abs(t.h - h) <= TOL);
+  if (near.length) { showMatch(w, h, near); return; }
+  await addNew(w, h);
+}
+async function addNew(w, h){
+  try {
+    $("addSize").disabled = true;
+    const n = await createType(w, h);
+    addToRoom(n); toast(`Новое окно: ${code(n)} (${cm(w)}×${cm(h)})`); clearInputs();
+  } catch(e) { toast(errMsg(e)); }
+  finally { $("addSize").disabled = !allowed("measure"); }
+}
+function showMatch(w, h, near){
+  const box = $("matchBox");
+  box.className = "notice match";
+  box.innerHTML = "";
+  const p = document.createElement("div");
+  p.textContent = `Размер ${cm(w)}×${cm(h)} почти совпадает с уже записанным (разница до 5 мм). Это то же окно?`;
+  box.append(p);
+  const row = document.createElement("div"); row.className = "row"; row.style.marginTop = "8px";
+  for (const t of near) {
+    const b = document.createElement("button");
+    b.textContent = `Да, это ${code(t.num)} (${cm(t.w)}×${cm(t.h)})`;
+    b.onclick = () => { addToRoom(t.num); toast(`Добавлено: ${code(t.num)}`); hideMatch(); clearInputs(); };
+    row.append(b);
+  }
+  const nb = document.createElement("button"); nb.className = "sec"; nb.textContent = "Нет, это новое окно";
+  nb.onclick = () => { hideMatch(); addNew(w, h); };
+  row.append(nb); box.append(row);
+}
+function hideMatch(){ $("matchBox").className = "hidden"; $("matchBox").innerHTML = ""; }
+function clearInputs(){ $("inW").value = ""; $("inH").value = ""; $("inW").focus(); }
+
+/* ---------- отрисовка ---------- */
+function el(tag, props = {}, ...kids){ const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) e.append(k); return e; }
+
+function render(){
+  // объекты
+  const sel = $("objSelect");
+  sel.innerHTML = "";
+  if (!objects.length) sel.append(el("option", {value: "", textContent: "— объектов пока нет —"}));
+  for (const o of objects) sel.append(el("option", {value: o.id, textContent: o.name}));
+  sel.value = curObj || "";
+  const has = !!curObj;
+  for (const id of ["tabs", "tab-measure", "tab-types", "tab-cut", "tab-glue", "tab-summary"]) $(id).style.opacity = has ? "" : ".4";
+  $("tabs").style.pointerEvents = has ? "" : "none";
+  for (const b of document.querySelectorAll("#objNewBtn,#objCreate,#addSize,#copyBtn,#roomDel,#floorCreate,#roomCreate")) b.disabled = !allowed("measure");
+
+  // этажи
+  const fc = $("floorChips"); fc.innerHTML = "";
+  const fl = floors();
+  if (curFloor === null && fl.length) curFloor = fl[0];
+  for (const f of fl) {
+    const b = el("button", {className: "chip", textContent: f + " этаж"});
+    b.setAttribute("aria-pressed", f === curFloor);
+    b.onclick = () => { curFloor = f; curRoomId = null; render(); };
+    fc.append(b);
+  }
+  if (allowed("measure")) { const a = el("button", {className: "chip add", textContent: "+ этаж"}); a.onclick = () => { $("floorNewRow").classList.toggle("hidden"); $("floorNewName").focus(); }; fc.append(a); }
+
+  // кабинеты
+  const rc = $("roomChips"); rc.innerHTML = "";
+  const fr = rooms.filter(r => r.floor === curFloor).sort((a, b) => byNum(a.name, b.name));
+  for (const r of fr) {
+    const total = Object.values(r.items).reduce((s, q) => s + q, 0);
+    const b = el("button", {className: "chip", textContent: `${r.name}${total ? " · " + total : ""}`});
+    b.setAttribute("aria-pressed", r.id === curRoomId);
+    b.onclick = () => { curRoomId = r.id; hideMatch(); render(); $("inW").focus(); };
+    rc.append(b);
+  }
+  if (curFloor !== null && allowed("measure")) { const a = el("button", {className: "chip add", textContent: "+ кабинет"}); a.onclick = () => { $("roomNewRow").classList.toggle("hidden"); $("roomNewName").focus(); }; rc.append(a); }
+  if (curFloor === null) rc.append(el("div", {className: "empty", textContent: "Сначала добавьте этаж."}));
+
+  // текущий кабинет
+  const r = room();
+  $("roomTitle").textContent = r ? `Кабинет ${r.name}, ${r.floor} этаж` : "Выберите кабинет";
+  $("roomDel").classList.toggle("hidden", !r || !allowed("measure"));
+  const ri = $("roomItems"); ri.innerHTML = "";
+  if (r) {
+    const nums = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byNum);
+    if (!nums.length) ri.append(el("div", {className: "empty", textContent: "В кабинете пока нет окон. Введите размер или нажмите на окно из списка ниже."}));
+    for (const n of nums) {
+      const t = types[n];
+      const minus = el("button", {textContent: "−", ariaLabel: "Убрать одно"}); minus.onclick = () => addToRoom(n, -1); minus.disabled = !allowed("measure");
+      const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addToRoom(n, 1); plus.disabled = !allowed("measure");
+      ri.append(el("div", {className: "item"},
+        el("span", {className: "code", textContent: code(n)}),
+        el("span", {className: "size", textContent: t ? `${cm(t.w)}×${cm(t.h)}` : "…"}),
+        el("div", {className: "qty"}, minus, el("span", {textContent: r.items[n]}), plus)));
+    }
+  }
+  for (const id of ["inW", "inH", "addSize"]) $(id).disabled = !r || !allowed("measure");
+
+  // копирование
+  const cf = $("copyFrom"); const prev = cf.value; cf.innerHTML = "";
+  for (const x of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name))) if (!r || x.id !== r.id) cf.append(el("option", {value: x.id, textContent: `${x.floor} эт., ${x.name}`}));
+  if ([...cf.options].some(o => o.value === prev)) cf.value = prev;
+  $("copyBtn").disabled = !r || !cf.options.length || !allowed("measure");
+
+  // кнопки видов окон
+  const tb = $("typeButtons"); tb.innerHTML = "";
+  const c = counts();
+  const tlist = Object.values(types).sort((a, b) => a.num - b.num);
+  $("typesHint").textContent = tlist.length ? "Нажмите на окно, чтобы добавить его в выбранный кабинет." : "Здесь появятся окна, когда вы введёте первый размер.";
+  for (const t of tlist) {
+    const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
+    b.disabled = !r || !allowed("measure");
+    b.onclick = () => { addToRoom(t.num); toast(`Добавлено: ${code(t.num)}`); };
+    tb.append(b);
+  }
+
+  renderTypes(c); renderProgress("cut", c); renderProgress("glue", c); renderSummary(c);
+  renderMe(); renderShift(); renderAdmin();
+  $("measureRO").classList.toggle("hidden", !db || allowed("measure"));
+}
+
+/* ---------- профиль, смены, управление ---------- */
+const money = x => (Math.round((x || 0) * 100) / 100).toLocaleString("ru-RU", {maximumFractionDigits: 2});
+const dur = ms => { const m = Math.max(0, Math.round(ms / 60000)); return `${Math.floor(m / 60)} ч ${m % 60} мин`; };
+const dateTime = t => t ? new Date(t).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
+const numOrNull = v => { const x = num(v); return isFinite(x) && String(v).trim() !== "" ? x : null; };
+
+function renderMe(){
+  const chip = $("meChip");
+  const nm = me ? me.name : "";
+  if (amOwner) chip.textContent = `${nm} · владелец, все права`;
+  else if (me) {
+    const r = me.roles || [];
+    chip.textContent = `${nm} · ` + (r.includes("admin") ? "все разделы" : r.length ? r.map(x => ROLE[x]).join(", ") : "только просмотр");
+  }
+  if (myShift) chip.textContent += " · смена открыта";
+  $("navAdmin").classList.toggle("hidden", !amOwner);
+  $("navShift").classList.toggle("hidden", !me);
+}
+
+function myPrices(){
+  const r = me || {};
+  return {cut: r.rateCut != null ? r.rateCut : (prices.cut || 0), glue: r.rateGlue != null ? r.rateGlue : (prices.glue || 0)};
+}
+function shiftWorkOf(s){
+  const w = shiftWork[s.id];
+  return w || {cut: s.cutArea || 0, glue: s.glueArea || 0};
+}
+function shiftPay(s){ const w = shiftWorkOf(s); return w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
+
+/* Объём работы смены считается по отметкам во всех объектах */
+const typesCache = {};
+async function objTypes(oid){
+  if (oid === curObj && Object.keys(types).length) return types;
+  if (typesCache[oid]) return typesCache[oid];
+  const t = {}; (await F.getDocs(F.collection(fs, `objects/${oid}/types`))).forEach(d => { const v = d.data(); if (v && v.num) t[v.num] = v; });
+  return typesCache[oid] = t;
+}
+async function loadShiftWork(s){
+  const res = {cut: 0, glue: 0};
+  for (const o of objects) {
+    const q = await F.getDocs(F.query(F.collection(fs, `objects/${o.id}/log`), F.where("shift", "==", s.id)));
+    if (q.empty) continue;
+    const t = await objTypes(o.id);
+    q.forEach(d => { const x = d.data(), tp = t[x.num]; if (tp && x.kind in res) res[x.kind] += x.q * tp.w * tp.h / 10000; });
+  }
+  res.cut = Math.max(0, res.cut); res.glue = Math.max(0, res.glue);
+  shiftWork[s.id] = res;
+  return res;
+}
+let swTimer = null;
+function scheduleShiftWork(delay = 1500){
+  if (!myShift) return;
+  clearTimeout(swTimer);
+  swTimer = setTimeout(async () => { try { await loadShiftWork(myShift); render(); } catch(e) {} }, delay);
+}
+// Для владельца: все отметки всех объектов, сгруппированные по сменам
+let allWorkBusy = false;
+async function loadAllWork(){
+  if (!amOwner || allWorkBusy) return;
+  allWorkBusy = true;
+  try {
+    const acc = {};
+    for (const o of objects) {
+      const t = await objTypes(o.id);
+      (await F.getDocs(F.collection(fs, `objects/${o.id}/log`))).forEach(d => {
+        const x = d.data(); if (!x.shift || !(x.kind === "cut" || x.kind === "glue")) return;
+        const tp = t[x.num]; if (!tp) return;
+        (acc[x.shift] = acc[x.shift] || {cut: 0, glue: 0})[x.kind] += x.q * tp.w * tp.h / 10000;
+      });
+    }
+    for (const id of Object.keys(acc)) acc[id] = {cut: Math.max(0, acc[id].cut), glue: Math.max(0, acc[id].glue)};
+    for (const s of shifts) shiftWork[s.id] = acc[s.id] || {cut: 0, glue: 0};
+    render();
+  } catch(e) { toast("Не удалось загрузить объёмы работ: " + errMsg(e)); }
+  allWorkBusy = false;
+}
+
+async function openShift(){
+  if (myShift) return;
+  if (!amOwner && !pricesLoaded) { toast("Подождите, загружаю цены…"); return; }
+  const pr = myPrices();
+  const ref = F.doc(F.collection(fs, "shifts"));
+  const body = {uid: myId, name: me.name, start: Date.now(), end: null, priceCut: pr.cut, priceGlue: pr.glue, bonus: 0, bonusNote: "", cutArea: 0, glueArea: 0, sum: 0};
+  try { await F.setDoc(ref, body); toast("Смена открыта — можно работать"); }
+  catch(e) { toast(String(e.code).includes("permission") ? "Не удалось открыть смену. Возможно, владелец ещё не указал цены." : errMsg(e)); }
+}
+async function closeShift(){
+  const s = myShift; if (!s) return;
+  try {
+    const w = await loadShiftWork(s);
+    const sum = Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100;
+    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea: Math.round(w.cut * 10000) / 10000, glueArea: Math.round(w.glue * 10000) / 10000, sum});
+    toast("Смена закрыта");
+  } catch(e) { toast(errMsg(e)); }
+}
+
+function shiftStats(s){
+  const w = shiftWorkOf(s);
+  const pay = shiftPay(s), bonus = s.bonus || 0;
+  return el("div", {className: "srow", style: "border:0;padding:0"},
+    el("div", {className: "pnums"},
+      el("span", {}, "Нарезка ", el("b", {textContent: `${m2(w.cut)} м²`}), ` × ${money(s.priceCut)} ₽`),
+      el("span", {}, "Оклейка ", el("b", {textContent: `${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
+    el("div", {className: "pnums"},
+      el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
+      bonus ? el("span", {}, "Бонус ", el("b", {textContent: `${money(bonus)} ₽`})) : "",
+      el("span", {className: "done"}, "Итого ", el("b", {textContent: `${money(pay + bonus)} ₽`}))),
+    s.bonusNote ? el("div", {className: "empty", textContent: "Комментарий к бонусу: " + s.bonusNote}) : "");
+}
+
+function renderShift(){
+  const box = $("tab-shift"); box.innerHTML = "";
+  if (!me) return;
+  const card = el("div", {className: "card"});
+  if (!myShift) {
+    const pr = myPrices();
+    card.append(el("h2", {textContent: "Смена закрыта"}),
+      el("div", {className: "empty", textContent: "Откройте смену перед началом работы. Все отметки нарезки и оклейки запишутся в неё, а при закрытии вы увидите время, объём и сумму."}),
+      el("div", {className: "pnums"},
+        el("span", {}, "Нарезка: ", el("b", {textContent: `${money(pr.cut)} ₽/м²`})),
+        el("span", {}, "Оклейка: ", el("b", {textContent: `${money(pr.glue)} ₽/м²`}))));
+    const b = el("button", {textContent: "Открыть смену"}); b.onclick = openShift;
+    card.append(b);
+  } else {
+    card.append(el("h2", {textContent: "Смена открыта"}),
+      el("div", {className: "pnums"}, el("span", {}, "Начало ", el("b", {textContent: dateTime(myShift.start)})), el("span", {}, "Идёт ", el("b", {textContent: dur(Date.now() - myShift.start)}))),
+      shiftStats(myShift));
+    const row = el("div", {className: "row"});
+    const ref = el("button", {className: "sec", textContent: "Обновить"}); ref.onclick = () => scheduleShiftWork(0);
+    const b = el("button", {textContent: "Закрыть смену"}); b.onclick = () => confirmTap(b, closeShift);
+    row.append(b, ref); card.append(row);
+  }
+  box.append(card);
+
+  const mine = shifts.filter(s => s.uid === myId && s.end).sort((a, b) => b.start - a.start).slice(0, 50);
+  const h = el("div", {className: "card"}, el("h2", {textContent: "Мои смены"}));
+  if (!mine.length) h.append(el("div", {className: "empty", textContent: "Закрытых смен пока нет."}));
+  for (const s of mine) h.append(el("div", {className: "srow"},
+    el("div", {className: "row"}, el("b", {textContent: dateTime(s.start)}), el("span", {className: "size", textContent: "→ " + dateTime(s.end)}), el("span", {className: "grow"}), el("span", {className: "pill", textContent: dur(s.end - s.start)})),
+    shiftStats(s)));
+  box.append(h);
+}
+
+/* ---------- Управление (только владелец) ---------- */
+let adminPeriod = "7";
+function renderAdmin(){
+  const box = $("tab-admin"); box.innerHTML = "";
+  if (!amOwner) return;
+
+  // цены
+  const pc = el("input", {value: prices.cut || "", inputMode: "decimal", id: "prCut", placeholder: "0"});
+  const pg = el("input", {value: prices.glue || "", inputMode: "decimal", id: "prGlue", placeholder: "0"});
+  const ps = el("button", {textContent: "Сохранить цены"});
+  ps.onclick = async () => {
+    const c = numOrNull(pc.value), g = numOrNull(pg.value);
+    if (c == null || g == null || c < 0 || g < 0) { toast("Введите обе цены числом"); return; }
+    try { await F.setDoc(F.doc(fs, "settings/prices"), {cut: c, glue: g, updated: Date.now()}); toast("Цены сохранены. Они применятся к новым сменам."); } catch(e) { toast(errMsg(e)); }
+  };
+  box.append(el("div", {className: "card"}, el("h2", {textContent: "Стандартные цены за м²"}),
+    el("div", {className: "grid2"},
+      el("div", {}, el("label", {htmlFor: "prCut", textContent: "Нарезка, ₽/м²"}), pc),
+      el("div", {}, el("label", {htmlFor: "prGlue", textContent: "Оклейка, ₽/м²"}), pg)),
+    el("div", {className: "empty", textContent: "Цена фиксируется в смене при её открытии: если поменять цену, старые смены останутся по старой."}), ps));
+
+  // сотрудники
+  const uc = el("div", {className: "card"}, el("h2", {textContent: "Сотрудники"}));
+  const list = Object.entries(usersMap).filter(([id]) => id !== myId)
+    .sort((a, b) => (!!a[1].approved - !!b[1].approved) || String(a[1].name).localeCompare(String(b[1].name), "ru"));
+  if (!list.length) uc.append(el("div", {className: "empty", textContent: "Пока никто не зарегистрировался. Отправьте сотрудникам ссылку на сайт — они зарегистрируются и появятся здесь."}));
+  for (const [id, u] of list) {
+    const ref = F.doc(fs, "users/" + id);
+    const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
+    const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
+    const chips = el("div", {className: "chips"});
+    for (const key of ["measure", "cut", "glue", "admin"]) {
+      const cb = el("input", {type: "checkbox", checked: (u.roles || []).includes(key), id: `role-${id}-${key}`});
+      cb.onchange = () => { const r = new Set(u.roles || []); cb.checked ? r.add(key) : r.delete(key); upd({roles: [...r]}); };
+      chips.append(el("label", {htmlFor: cb.id}, cb, ROLE[key]));
+    }
+    const rc = el("input", {value: u.rateCut ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.cut)}`, id: `rc-${id}`});
+    const rg = el("input", {value: u.rateGlue ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.glue)}`, id: `rg-${id}`});
+    const rs = el("button", {className: "sec", textContent: "Сохранить ставки"});
+    rs.onclick = () => { upd({rateCut: numOrNull(rc.value), rateGlue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); };
+    const del = el("button", {className: "link", textContent: "Удалить сотрудника"});
+    del.onclick = () => confirmTap(del, async () => { try { await F.deleteDoc(ref); toast("Сотрудник удалён"); } catch(e) { toast(errMsg(e)); } });
+    uc.append(el("div", {className: "member"},
+      el("div", {className: "row"}, el("b", {className: "grow", textContent: u.name || "Без имени"}),
+        el("span", {className: "pill" + (u.approved ? " ok" : ""), textContent: u.approved ? "работает" : "ждёт доступа"})),
+      el("div", {className: "chips"}, el("label", {htmlFor: ap.id}, ap, "Доступ разрешён")),
+      el("div", {className: "empty", textContent: "Что может изменять:"}), chips,
+      el("div", {className: "grid2"},
+        el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
+        el("div", {}, el("label", {htmlFor: rg.id, textContent: "Своя ставка: оклейка"}), rg)),
+      el("div", {className: "row"}, rs, el("span", {className: "grow"}), del)));
+  }
+  uc.append(el("div", {className: "empty", textContent: "Забыл пароль: удалите сотрудника здесь и в консоли Firebase (Authentication → Users → его строка → Delete account). После этого он сможет зарегистрироваться заново с тем же именем."}));
+  box.append(uc);
+
+  // смены
+  const sc = el("div", {className: "card"}, el("h2", {textContent: "Смены и оплата"}));
+  const per = el("select", {id: "perSel"});
+  for (const [v, t] of [["1", "Сегодня"], ["7", "7 дней"], ["30", "30 дней"], ["all", "Всё время"]]) per.append(el("option", {value: v, textContent: t}));
+  per.value = adminPeriod; per.onchange = () => { adminPeriod = per.value; render(); };
+  const rb = el("button", {className: "sec", textContent: "Пересчитать объёмы"}); rb.onclick = loadAllWork;
+  sc.append(el("div", {className: "row"}, per, rb));
+  const from = adminPeriod === "all" ? 0 : (adminPeriod === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(adminPeriod) * 864e5);
+  const ss = shifts.filter(s => s.start >= from).sort((a, b) => b.start - a.start);
+  // итоги по людям
+  const tot = {};
+  for (const s of ss) {
+    const w = shiftWorkOf(s), t = tot[s.uid] || (tot[s.uid] = {n: 0, ms: 0, cut: 0, glue: 0, pay: 0});
+    t.n++; t.ms += (s.end || Date.now()) - s.start; t.cut += w.cut; t.glue += w.glue; t.pay += shiftPay(s) + (s.bonus || 0);
+  }
+  if (!ss.length) sc.append(el("div", {className: "empty", textContent: "За этот период смен нет."}));
+  else {
+    const tb = el("table", {}, el("thead", {}, el("tr", {}, ...["Сотрудник", "Смен", "Часы", "Нарезка м²", "Оклейка м²", "К оплате"].map((h, i) => el("th", {className: i ? "n" : "", textContent: h})))));
+    const tbody = el("tbody");
+    let all = 0;
+    for (const [uid, t] of Object.entries(tot)) {
+      all += t.pay;
+      tbody.append(el("tr", {}, el("td", {textContent: (usersMap[uid] || {}).name || names[uid] || "—"}), el("td", {className: "n", textContent: t.n}),
+        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: m2(t.cut)}),
+        el("td", {className: "n", textContent: m2(t.glue)}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
+    }
+    tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: money(all) + " ₽"})));
+    tb.append(tbody);
+    sc.append(el("div", {className: "scroll"}, tb));
+    const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
+    cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус\tИтого"].concat(ss.map(s => {
+      const w = shiftWorkOf(s), pay = shiftPay(s);
+      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), money(pay + (s.bonus || 0))].join("\t");
+    })).join("\n"), "Смены скопированы — вставьте в Excel");
+    sc.append(cp);
+  }
+  for (const s of ss) {
+    const ref = F.doc(fs, "shifts/" + s.id);
+    const bn = el("input", {value: s.bonus || "", inputMode: "decimal", placeholder: "0", id: `bn-${s.id}`});
+    const bt = el("input", {value: s.bonusNote || "", placeholder: "за что (необязательно)", id: `bt-${s.id}`});
+    const bs = el("button", {className: "sec", textContent: "Сохранить бонус"});
+    bs.onclick = async () => { try { await F.updateDoc(ref, {bonus: numOrNull(bn.value) || 0, bonusNote: bt.value.trim()}); toast("Бонус сохранён"); } catch(e) { toast(errMsg(e)); } };
+    const row = el("div", {className: "srow"},
+      el("div", {className: "row"}, el("b", {textContent: s.name || "—"}), el("span", {className: "size", textContent: `${dateTime(s.start)} → ${s.end ? dateTime(s.end) : "идёт"}`}), el("span", {className: "grow"}),
+        el("span", {className: "pill" + (s.end ? "" : " ok"), textContent: s.end ? dur(s.end - s.start) : "открыта"})),
+      shiftStats(s),
+      el("div", {className: "grid2"}, el("div", {}, el("label", {htmlFor: bn.id, textContent: "Бонус, ₽"}), bn), el("div", {}, el("label", {htmlFor: bt.id, textContent: "Комментарий"}), bt)));
+    const act = el("div", {className: "row"}, bs);
+    if (!s.end) { const cl = el("button", {className: "link", textContent: "Закрыть смену сейчас"}); cl.onclick = () => confirmTap(cl, async () => {
+      try { const w = await loadShiftWork(s); await F.updateDoc(ref, {end: Date.now(), cutArea: w.cut, glueArea: w.glue, sum: Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100}); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
+    const dl = el("button", {className: "link", textContent: "Удалить"}); dl.onclick = () => confirmTap(dl, async () => { try { await F.deleteDoc(ref); } catch(e) { toast(errMsg(e)); } });
+    act.append(el("span", {className: "grow"}), dl);
+    row.append(act); sc.append(row);
+  }
+  box.append(sc);
+
+  // резервная копия
+  const bk = el("button", {className: "sec", textContent: "Скачать копию базы"});
+  bk.onclick = downloadBackup;
+  box.append(el("div", {className: "card"}, el("h2", {textContent: "Резервная копия"}),
+    el("div", {className: "empty", textContent: "Скачивает все данные (объекты, окна, кабинеты, отметки, смены, сотрудников) одним файлом. Сохраняйте его, например, раз в неделю."}), bk));
+}
+
+async function downloadBackup(){
+  toast("Собираю копию…");
+  try {
+    const grab = async path => { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; };
+    const out = {exportedAt: new Date().toISOString(), config: await grab("config"), settings: await grab("settings"), users: await grab("users"), shifts: await grab("shifts"), objects: {}};
+    for (const o of (await F.getDocs(F.collection(fs, "objects"))).docs)
+      out.objects[o.id] = {data: o.data(), types: await grab(`objects/${o.id}/types`), rooms: await grab(`objects/${o.id}/rooms`), log: await grab(`objects/${o.id}/log`)};
+    const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
+    const a = el("a", {href: URL.createObjectURL(blob), download: `zamery-kopiya-${new Date().toISOString().slice(0, 10)}.json`});
+    document.body.append(a); a.click(); a.remove();
+    toast("Копия скачана");
+  } catch(e) { toast("Не удалось собрать копию: " + errMsg(e)); }
+}
+
+function whereList(n){
+  const parts = [];
+  for (const r of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)))
+    if (r.items[n] > 0) parts.push(`${r.floor} эт. ${r.name} ×${r.items[n]}`);
+  return parts.join("; ");
+}
+
+function renderTypes(c){
+  const body = $("typesBody"); body.innerHTML = "";
+  const tlist = Object.values(types).sort((a, b) => a.num - b.num);
+  if (!tlist.length) { body.append(el("tr", {}, el("td", {colSpan: 6, className: "empty", textContent: "Окон пока нет."}))); return; }
+  for (const t of tlist) {
+    const q = c[t.num] || 0;
+    const tr = el("tr", {},
+      el("td", {className: "code", textContent: code(t.num)}),
+      el("td", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}),
+      el("td", {className: "n", textContent: m2(t.w * t.h / 10000)}),
+      el("td", {className: "n", textContent: q}),
+      el("td", {className: "where", textContent: whereList(t.num) || "нигде"}));
+    const act = el("td");
+    if (allowed("measure")) {
+      const ed = el("button", {className: "link", textContent: "Изменить"});
+      ed.onclick = () => editType(t, tr);
+      act.append(ed);
+      if (!q) { const del = el("button", {className: "link", textContent: "Удалить"}); del.onclick = () => confirmTap(del, async () => { try { await db.doc(objPath() + "/types/n" + t.num).delete(); } catch(e) { toast(errMsg(e)); } }); act.append(del); }
+    }
+    tr.append(act); body.append(tr);
+  }
+}
+function editType(t, tr){
+  const w = el("input", {value: cm(t.w), inputMode: "decimal", style: "width:72px", ariaLabel: "Ширина"});
+  const h = el("input", {value: cm(t.h), inputMode: "decimal", style: "width:72px", ariaLabel: "Высота"});
+  const ok = el("button", {textContent: "Сохранить"});
+  ok.onclick = async () => {
+    const nw = num(w.value), nh = num(h.value);
+    if (!(nw > 0 && nh > 0)) { toast("Введите размеры в см"); return; }
+    try { await db.doc(objPath() + "/types/n" + t.num).set({num: t.num, w: nw, h: nh, created: Date.now()}); toast(`${code(t.num)} обновлено`); }
+    catch(e) { toast(errMsg(e)); }
+  };
+  tr.children[1].replaceChildren(el("div", {className: "row"}, w, el("span", {textContent: "×"}), h, ok));
+}
+function confirmTap(btn, action){
+  if (btn.dataset.sure) { action(); return; }
+  btn.dataset.sure = 1; const old = btn.textContent; btn.textContent = "Точно?";
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.sure; btn.textContent = old; } }, 3000);
+}
+
+function renderSummary(c){
+  const tl = Object.values(types).filter(t => c[t.num]);
+  const total = Object.values(c).reduce((s, q) => s + q, 0);
+  const area = tl.reduce((s, t) => s + t.w * t.h / 10000 * c[t.num], 0);
+  $("stTypes").textContent = tl.length; $("stCount").textContent = total; $("stArea").textContent = m2(area);
+  const box = $("summaryFloors"); box.innerHTML = "";
+  box.append(el("h2", {textContent: "По этажам и кабинетам"}));
+  const fl = floors();
+  if (!fl.length) { box.append(el("div", {className: "empty", textContent: "Пока ничего не записано."})); return; }
+  for (const f of fl) {
+    const fr = rooms.filter(r => r.floor === f).sort((a, b) => byNum(a.name, b.name));
+    const fTotal = fr.reduce((s, r) => s + Object.values(r.items).reduce((a, b) => a + b, 0), 0);
+    box.append(el("div", {className: "floor-h", textContent: `${f} этаж — ${fTotal} шт`}));
+    if (!fr.length) { box.append(el("div", {className: "empty", textContent: "Кабинетов нет."})); continue; }
+    const tbl = el("table");
+    for (const r of fr) {
+      const list = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byNum).map(n => `${code(n)}×${r.items[n]}`).join(", ") || "—";
+      tbl.append(el("tr", {}, el("td", {textContent: r.name, style: "width:30%"}), el("td", {className: "code", style: "font-size:13px;line-height:1.5", textContent: list})));
+    }
+    box.append(el("div", {className: "scroll"}, tbl));
+  }
+}
+
+async function copyText(t, msg){
+  try { await navigator.clipboard.writeText(t); toast(msg); }
+  catch(e) { toast("Не удалось скопировать — браузер запретил доступ к буферу обмена."); }
+}
+
+/* ---------- обработчики ---------- */
+const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление"};
+function showTab(name){
+  for (const t of Object.keys(TAB_TITLE)) { const s = $("tab-" + t); s.classList.toggle("hidden", t !== name); s.style.display = t === name ? "flex" : ""; }
+  document.querySelectorAll("#drawer .navitem[data-tab]").forEach(x => x.dataset.tab === name ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
+  $("pageTitle").textContent = TAB_TITLE[name];
+  if (name === "admin") loadAllWork();
+  if (name === "shift") scheduleShiftWork(0);
+  try { localStorage.setItem("zamery-tab", name); } catch(e) {}
+  window.scrollTo(0, 0);
+}
+function openMenu(){ $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); $("backdrop").classList.remove("hidden"); $("menuBtn").setAttribute("aria-expanded", "true"); }
+function closeMenu(){ $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); $("backdrop").classList.add("hidden"); $("menuBtn").setAttribute("aria-expanded", "false"); }
+$("menuBtn").onclick = openMenu; $("menuClose").onclick = closeMenu; $("backdrop").onclick = closeMenu;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+document.querySelectorAll("#drawer .navitem[data-tab]").forEach(b => b.onclick = () => { showTab(b.dataset.tab); closeMenu(); });
+$("objSelect").onchange = e => openObject(e.target.value);
+$("objNewBtn").onclick = () => { $("objNewRow").classList.toggle("hidden"); $("objNewName").focus(); };
+$("objCreate").onclick = async () => {
+  const name = $("objNewName").value.trim(); if (!name) { toast("Введите название объекта"); return; }
+  try { const ref = db.collection("objects").doc(); await ref.set({name, floors: ["1"], created: Date.now()}); $("objNewName").value = ""; $("objNewRow").classList.add("hidden"); openObject(ref.id); }
+  catch(e) { toast(errMsg(e)); }
+};
+$("floorCreate").onclick = async () => {
+  const f = $("floorNewName").value.trim(); if (!f) return;
+  const o = objects.find(o => o.id === curObj); if (!o) return;
+  const fl = [...new Set([...(o.floors || []), f])];
+  try { await db.doc(objPath()).update({floors: fl}); o.floors = fl; curFloor = f; curRoomId = null; $("floorNewName").value = ""; $("floorNewRow").classList.add("hidden"); render(); }
+  catch(e) { toast(errMsg(e)); }
+};
+$("roomCreate").onclick = () => {
+  const name = $("roomNewName").value.trim(); if (!name || curFloor === null) return;
+  if (rooms.some(r => r.floor === curFloor && r.name === name)) { toast("Такой кабинет на этаже уже есть"); return; }
+  const id = db.collection(objPath() + "/rooms").doc().id;
+  const r = {id, floor: curFloor, name, items: {}};
+  rooms.push(r); curRoomId = id; saveRoom(r);
+  $("roomNewName").value = ""; $("roomNewRow").classList.add("hidden"); render(); $("inW").focus();
+};
+$("roomDel").onclick = function(){ const r = room(); if (!r) return; confirmTap(this, async () => {
+  try { await db.doc(roomPath(r.id)).delete(); rooms = rooms.filter(x => x.id !== r.id); curRoomId = null; render(); toast("Кабинет удалён"); } catch(e) { toast(errMsg(e)); } }); };
+$("copyBtn").onclick = () => {
+  const r = room(), src = rooms.find(x => x.id === $("copyFrom").value); if (!r || !src) return;
+  for (const [n, q] of Object.entries(src.items)) if (q > 0) r.items[n] = (r.items[n] || 0) + q;
+  saveRoom(r); render(); toast(`Скопировано из кабинета ${src.name}`);
+};
+$("addSize").onclick = onAddSize;
+$("inW").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("inH").focus(); } });
+$("inH").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); onAddSize(); } });
+$("objNewName").addEventListener("keydown", e => { if (e.key === "Enter") $("objCreate").click(); });
+$("floorNewName").addEventListener("keydown", e => { if (e.key === "Enter") $("floorCreate").click(); });
+$("roomNewName").addEventListener("keydown", e => { if (e.key === "Enter") $("roomCreate").click(); });
+$("copyTable").onclick = () => {
+  const lines = ["Этаж\tКабинет\tКод\tШирина, см\tВысота, см\tКол-во"];
+  for (const r of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)))
+    for (const n of Object.keys(r.items).filter(n => r.items[n] > 0).sort(byNum)) { const t = types[n] || {}; lines.push([r.floor, r.name, code(n), cm(t.w || 0), cm(t.h || 0), r.items[n]].join("\t")); }
+  copyText(lines.join("\n"), "Таблица скопирована — вставьте в Excel");
+};
+$("copyCodes").onclick = () => {
+  const c = counts();
+  const cd = doneBy("cut"), gd = doneBy("glue");
+  const lines = ["Код\tРазмер, см\tНужно\tНарезано\tНаклеено"].concat(Object.keys(c).sort(byNum).map(n => { const t = types[n] || {}; return `${code(n)}\t${cm(t.w || 0)}×${cm(t.h || 0)}\t${c[n]}\t${cd[n] || 0}\t${gd[n] || 0}`; }));
+  copyText(lines.join("\n"), "Итог по кодам скопирован");
+};
+
+
+/* ---------- вход и регистрация ---------- */
+async function nameToEmail(name){
+  const n = name.trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е");
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(n)));
+  return "u" + [...h.slice(0, 16)].map(b => b.toString(16).padStart(2, "0")).join("") + "@zamery.app";
+}
+function authError(e){
+  const c = String(e && e.code || "");
+  if (c.includes("email-already-in-use")) return "Это имя уже занято. Войдите или добавьте к имени фамилию.";
+  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found") || c.includes("invalid-login")) return "Неверное имя или пароль.";
+  if (c.includes("weak-password")) return "Пароль должен быть не короче 6 символов.";
+  if (c.includes("network")) return "Нет интернета. Проверьте связь и повторите.";
+  if (c.includes("too-many-requests")) return "Слишком много попыток. Подождите пару минут.";
+  if (c.includes("operation-not-allowed")) return "Вход по паролю не включён в Firebase (Authentication → Sign-in method → Email/Password).";
+  return "Не получилось: " + (c || "неизвестная ошибка");
+}
+let authMode = "login";
+function setAuthMode(m){
+  authMode = m;
+  $("aLogin").setAttribute("aria-selected", m === "login"); $("aReg").setAttribute("aria-selected", m === "reg");
+  $("authTitle").textContent = m === "login" ? "Вход" : "Регистрация";
+  $("aGo").textContent = m === "login" ? "Войти" : "Зарегистрироваться";
+  $("aPass2Wrap").classList.toggle("hidden", m !== "reg");
+  $("aPass").autocomplete = m === "login" ? "current-password" : "new-password";
+  $("aHint").textContent = m === "login" ? "Нет аккаунта? Откройте «Регистрация». После регистрации владелец выдаст вам доступ." : "Придумайте пароль не короче 6 символов и запомните его. Почта не нужна.";
+  $("aMsg").textContent = "";
+}
+$("aLogin").onclick = () => setAuthMode("login");
+$("aReg").onclick = () => setAuthMode("reg");
+$("aGo").onclick = async () => {
+  const name = $("aName").value.trim().replace(/\s+/g, " "), pass = $("aPass").value;
+  const msg = $("aMsg"); msg.textContent = "";
+  if (name.length < 2) { msg.textContent = "Введите имя."; return; }
+  if (pass.length < 6) { msg.textContent = "Пароль должен быть не короче 6 символов."; return; }
+  if (authMode === "reg" && pass !== $("aPass2").value) { msg.textContent = "Пароли не совпадают."; return; }
+  $("aGo").disabled = true;
+  try {
+    const email = await nameToEmail(name);
+    if (authMode === "login") await A.signInWithEmailAndPassword(auth, email, pass);
+    else {
+      const cred = await A.createUserWithEmailAndPassword(auth, email, pass);
+      await F.setDoc(F.doc(fs, "users/" + cred.user.uid), {name, roles: [], approved: false, created: Date.now()});
+      // первый зарегистрированный становится владельцем
+      try { const o = await F.getDoc(F.doc(fs, "config/owner")); if (!o.exists()) await F.setDoc(F.doc(fs, "config/owner"), {uid: cred.user.uid, at: Date.now()}); } catch(e) {}
+    }
+  } catch(e) { msg.textContent = authError(e); }
+  $("aGo").disabled = false;
+};
+for (const id of ["aName", "aPass", "aPass2"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("aGo").click(); });
+const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
+$("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
+
+/* ---------- запуск ---------- */
+function view(name){ for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
+let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false;
+
+function gate(){
+  if (!ownerKnown || !meKnown) return;
+  if (amOwner || (me && me.approved)) {
+    view("app");
+    if (!dataStarted) startData();
+    render();
+  } else {
+    view("waitView");
+    $("waitText").textContent = me
+      ? `${me.name}, вы зарегистрированы. Владелец должен подтвердить ваш доступ — после этого страница откроется сама.`
+      : "Профиль не найден. Возможно, владелец удалил вашу учётную запись. Выйдите и зарегистрируйтесь заново.";
+  }
+}
+
+function startData(){
+  dataStarted = true;
+  db = makeDb();
+  let t = "measure"; try { t = localStorage.getItem("zamery-tab") || "measure"; } catch(e) {}
+  if (!TAB_TITLE[t] || (t === "admin" && !amOwner)) t = "measure";
+  showTab(t);
+  // цены, сотрудники, смены
+  gsubs.push(F.onSnapshot(F.doc(fs, "settings/prices"), d => { prices = d.exists() ? d.data() : {cut: 0, glue: 0}; pricesLoaded = true; render(); }, () => { pricesLoaded = true; }));
+  gsubs.push(F.onSnapshot(F.collection(fs, "users"), q => {
+    usersMap = {}; q.forEach(d => { usersMap[d.id] = d.data(); names[d.id] = d.data().name || ""; }); render();
+  }, () => {}));
+  const sq = amOwner ? F.collection(fs, "shifts") : F.query(F.collection(fs, "shifts"), F.where("uid", "==", myId));
+  gsubs.push(F.onSnapshot(sq, q => {
+    shifts = q.docs.map(d => ({id: d.id, ...d.data()}));
+    const was = myShift && myShift.id;
+    myShift = shifts.find(s => s.uid === myId && !s.end) || null;
+    if (myShift && myShift.id !== was) scheduleShiftWork(0);
+    render();
+  }, e => toast("Не удалось загрузить смены: " + errMsg(e))));
+  // объекты
+  const timer = setTimeout(() => status("База пока не отвечает — проверьте интернет. Внесённые данные сохранятся, когда связь появится."), 10000);
+  gsubs.push(F.onSnapshot(F.collection(fs, "objects"), {includeMetadataChanges: true}, q => {
+    objects = q.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => (b.created || 0) - (a.created || 0));
+    if (!q.metadata.fromCache) { clearTimeout(timer); status(objects.length ? "" : (allowed("measure") ? "Создайте первый объект кнопкой «Новый»." : "Объектов пока нет.")); }
+    if (!curObj || !objects.find(o => o.id === curObj)) {
+      let saved = null; try { saved = localStorage.getItem("zamery-obj"); } catch(e) {}
+      const pick = objects.find(o => o.id === saved) || objects[0];
+      if (pick && pick.id !== curObj) { openObject(pick.id); return; }
+    }
+    render();
+  }, e => { clearTimeout(timer); status("Не удалось подключиться к базе: " + errMsg(e)); }));
+  // пока смена открыта, раз в минуту обновляем время на экране
+  setInterval(() => { if (myShift && !$("tab-shift").classList.contains("hidden")) render(); }, 60000);
+}
+
+if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
+  view("loadView"); $("loadView").firstElementChild.textContent = "Сайт ещё не подключён к Firebase: не указаны ключи проекта.";
+} else {
+  const fapp = initializeApp(FIREBASE_CONFIG);
+  auth = A.getAuth(fapp);
+  try { fs = F.initializeFirestore(fapp, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
+  catch(e) { fs = F.getFirestore(fapp); }
+  let userSubs = [];
+  A.onAuthStateChanged(auth, u => {
+    userSubs.forEach(f => f()); userSubs = [];
+    if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
+    if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
+    myId = u.uid; ownerKnown = meKnown = false;
+    view("loadView");
+    userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { amOwner = d.exists() && d.data().uid === myId; ownerKnown = true; gate(); },
+      () => { ownerKnown = true; gate(); }));
+    userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
+      me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
+      if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
+      gate();
+    }, () => { meKnown = true; gate(); }));
+  });
+}
+
+</script>
+</body>
+</html>
