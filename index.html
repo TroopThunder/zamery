@@ -1184,7 +1184,7 @@ async function downloadBackup(){
   toast("Собираю копию…");
   try {
     const grab = async path => { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; };
-    const out = {exportedAt: new Date().toISOString(), config: await grab("config"), settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
+    const out = {exportedAt: new Date().toISOString(), config: {owner: (await F.getDoc(F.doc(fs, "config/owner"))).data() || null}, settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
     for (const o of (await F.getDocs(F.collection(fs, "objects"))).docs)
       out.objects[o.id] = {data: o.data(), types: await grab(`objects/${o.id}/types`), rooms: await grab(`objects/${o.id}/rooms`), log: await grab(`objects/${o.id}/log`)};
     const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
