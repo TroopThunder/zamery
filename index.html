@@ -728,6 +728,7 @@ function addToRoom(n, q = 1){
 
 /* ---------- ввод размера ---------- */
 async function onAddSize(){
+  hideMatch();   // старая подсказка «похоже на…» больше не нужна
   const w = num($("inW").value), h = num($("inH").value);
   if (!(w > 0) || !(h > 0)) { toast("Введите ширину и высоту в сантиметрах"); return; }
   if (!room()) { toast("Сначала выберите кабинет"); return; }
@@ -1257,6 +1258,8 @@ $("copyBtn").onclick = () => {
   saveRoom(r); render(); toast(`Скопировано из кабинета ${src.name}`);
 };
 $("addSize").onclick = onAddSize;
+// поменяли размер — подсказка о похожем окне уже не про него
+for (const id of ["inW", "inH"]) $(id).addEventListener("input", () => { if (!$("matchBox").classList.contains("hidden")) hideMatch(); });
 $("inW").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("inH").focus(); } });
 $("inH").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); onAddSize(); } });
 $("objNewName").addEventListener("keydown", e => { if (e.key === "Enter") $("objCreate").click(); });
