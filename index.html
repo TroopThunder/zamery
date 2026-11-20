@@ -182,6 +182,14 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       <input id="objNewName" class="grow" placeholder="Название, например «Школа №12»">
       <button id="objCreate">Создать</button>
     </div>
+    <div class="row"><span class="grow"></span><button class="link hidden" id="objDelBtn">Удалить объект</button></div>
+    <div class="notice hidden" id="objDelBox" style="display:flex;flex-direction:column;gap:8px">
+      <b id="objDelTitle"></b>
+      <div>Удалятся все этажи, кабинеты, окна и отметки нарезки и оклейки этого объекта. Вернуть их будет нельзя — перед удалением можно скачать копию базы в «Управлении». Уже закрытые смены и суммы к оплате сохранятся.</div>
+      <label for="objDelConfirm">Для подтверждения введите название объекта</label>
+      <input id="objDelConfirm" autocomplete="off">
+      <div class="row"><button id="objDelGo">Удалить навсегда</button><button class="sec" id="objDelCancel">Отмена</button></div>
+    </div>
   </div>
 
   <div class="tabs hidden" role="tablist" id="tabs">
@@ -870,6 +878,7 @@ const numOrNull = v => { const x = num(v); return isFinite(x) && String(v).trim(
 // Управление: владелец или сотрудник с правом «Управление»
 const isManager = () => amOwner || !!(me && me.approved && (me.roles || []).includes("manager"));
 function renderMe(){
+  renderObjDelete();
   const chip = $("meChip");
   const nm = me ? me.name : "";
   if (amOwner) chip.textContent = `${nm} · владелец, все права`;
@@ -887,9 +896,11 @@ function myPrices(){
   const r = rates[myId] || {};
   return {cut: r.cut != null ? r.cut : (prices.cut || 0), glue: r.glue != null ? r.glue : (prices.glue || 0)};
 }
+// Закрытая смена считается по объёму, зафиксированному при закрытии (так оплата не меняется,
+// даже если объект потом удалят); открытая — по текущим отметкам
 function shiftWorkOf(s){
-  const w = shiftWork[s.id];
-  return w || {cut: s.cutArea || 0, glue: s.glueArea || 0};
+  if (s.end) return {cut: s.cutArea || 0, glue: s.glueArea || 0};
+  return shiftWork[s.id] || {cut: s.cutArea || 0, glue: s.glueArea || 0};
 }
 function shiftPay(s){ const w = shiftWorkOf(s); return w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
 
@@ -1151,6 +1162,39 @@ async function downloadBackup(){
     toast("Копия скачана");
   } catch(e) { toast("Не удалось собрать копию: " + errMsg(e)); }
 }
+
+
+/* ---------- удаление объекта (руководство с правом «Замер») ---------- */
+const canDeleteObject = () => isManager() && allowed("measure");
+function renderObjDelete(){
+  const o = objects.find(o => o.id === curObj);
+  $("objDelBtn").classList.toggle("hidden", !o || !canDeleteObject());
+  if (!o) $("objDelBox").classList.add("hidden");
+}
+$("objDelBtn").onclick = () => {
+  const o = objects.find(o => o.id === curObj); if (!o) return;
+  $("objDelTitle").textContent = `Удалить объект «${o.name}»?`;
+  $("objDelConfirm").value = ""; $("objDelBox").classList.remove("hidden"); $("objDelConfirm").focus();
+};
+$("objDelCancel").onclick = () => $("objDelBox").classList.add("hidden");
+$("objDelGo").onclick = async () => {
+  const o = objects.find(o => o.id === curObj); if (!o) return;
+  if ($("objDelConfirm").value.trim().toLowerCase() !== String(o.name).trim().toLowerCase()) { toast("Название не совпадает — объект не удалён"); return; }
+  const btn = $("objDelGo"); btn.disabled = true; toast("Удаляю…");
+  try {
+    // сначала всё внутри объекта, потом сам объект (пачками до 400 записей)
+    const refs = [];
+    for (const sub of ["log", "rooms", "types"]) (await F.getDocs(F.collection(fs, `objects/${o.id}/${sub}`))).forEach(d => refs.push(d.ref));
+    for (let i = 0; i < refs.length; i += 400) { const b = F.writeBatch(fs); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); }
+    await F.deleteDoc(F.doc(fs, "objects/" + o.id));
+    delete typesCache[o.id];
+    try { localStorage.removeItem("zamery-obj"); } catch(e) {}
+    $("objDelBox").classList.add("hidden");
+    toast(`Объект «${o.name}» удалён`);
+    curObj = null; openObject(null);
+  } catch(e) { toast("Не удалось удалить: " + errMsg(e)); }
+  btn.disabled = false;
+};
 
 function whereList(n){
   const parts = [];
