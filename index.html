@@ -435,11 +435,15 @@ function openObject(id){
 
 /* ---------- нарезка и оклейка: каждая отметка — отдельная запись ---------- */
 // room: undefined — все отметки; "" — без кабинета; id — только этот кабинет
-function doneBy(kind, room){
+// who: undefined — отметки всех; id — только этого человека
+function doneBy(kind, room, who){
   const d = {};
-  for (const x of log) if (x.kind === kind && (room === undefined || (x.room || "") === room)) d[x.num] = (d[x.num] || 0) + x.q;
+  for (const x of log) if (x.kind === kind && (room === undefined || (x.room || "") === room) && (who === undefined || x.by === who)) d[x.num] = (d[x.num] || 0) + x.q;
   return d;
 }
+// Сбросить чужие отметки может только руководство; сотрудник отменяет только своё
+const canResetAll = () => (typeof isManager === "function" ? isManager() : amOwner);
+const resetWho = () => canResetAll() ? undefined : myId;
 // Сколько ещё можно наклеить: нельзя клеить больше, чем нарезано
 function glueAvailTotal(k){ return Math.max(0, (doneBy("cut")[k] || 0) - (doneBy("glue")[k] || 0)); }
 function canGlueIn(r, k){
@@ -460,6 +464,10 @@ async function mark(kind, n, q, opt = {}){
       return;
     }
   }
+  if (q < 0 && !canResetAll()) {
+    const own = doneBy(kind, opt.room || "", myId)[n] || 0;
+    if (-q > own) { toast("Можно отменить только свои отметки"); return; }
+  }
   if (!amOwner && q > 0 && !myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
   const ref = db.collection(objPath() + "/log").doc();
   const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};
@@ -473,9 +481,10 @@ async function mark(kind, n, q, opt = {}){
 }
 // Сброс окна по всему объекту: обнуляет и отметки без кабинета, и по каждому кабинету
 function resetEverywhere(kind, n){
-  const scopes = new Set(log.filter(x => x.kind === kind && x.num == n).map(x => x.room || ""));
-  for (const sc of scopes) { const cur = doneBy(kind, sc)[n] || 0; if (cur) mark(kind, n, -cur, {reset: true, room: sc || undefined, silent: true}); }
-  toast(`${code(n)}: сброшено до 0`);
+  const who = resetWho();
+  const scopes = new Set(log.filter(x => x.kind === kind && x.num == n && (who === undefined || x.by === who)).map(x => x.room || ""));
+  for (const sc of scopes) { const cur = doneBy(kind, sc, who)[n] || 0; if (cur > 0) mark(kind, n, -cur, {reset: true, room: sc || undefined, silent: true}); }
+  toast(who ? `${code(n)}: ваши отметки отменены` : `${code(n)}: сброшено до 0`);
 }
 async function unmark(id){
   try { await db.doc(objPath() + "/log/" + id).delete(); log = log.filter(x => x.id !== id); render(); toast("Отметка отменена"); }
@@ -546,10 +555,11 @@ function renderProgressAll(kind, c, box, tlist, done, cutDone){
     const cap = kind === "glue" ? Math.min(Math.max(0, l), glueAvailTotal(t.num)) : Math.max(0, l);
     allBtn.onclick = () => { if (cap > 0) mark(kind, t.num, cap); };
     allBtn.disabled = cap <= 0 || !allowed(kind); plus.disabled = !allowed(kind) || (kind === "glue" && glueAvailTotal(t.num) <= 0); qIn.disabled = plus.disabled;
-    const resetBtn = el("button", {className: "link", textContent: "Сбросить"});
-    resetBtn.title = "Обнулить все отметки по этому окну, в том числе по кабинетам";
+    const myD = canResetAll() ? d : (doneBy(kind, undefined, myId)[t.num] || 0);
+    const resetBtn = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"});
+    resetBtn.title = canResetAll() ? "Обнулить все отметки по этому окну, в том числе по кабинетам" : "Отменить только ваши отметки по этому окну";
     resetBtn.onclick = () => confirmTap(resetBtn, () => resetEverywhere(kind, t.num));
-    resetBtn.disabled = !allowed(kind) || d === 0;
+    resetBtn.disabled = !allowed(kind) || myD <= 0;
     const nums = el("div", {className: "pnums"},
       el("span", {}, "Нужно ", el("b", {textContent: n})),
       el("span", {className: "done"}, KIND[kind].verb + " ", el("b", {textContent: d})),
@@ -667,8 +677,8 @@ function renderProgressRooms(kind, box){
         const cutInfo = st === "done" ? "" : rc[k] ? `Нарезано для кабинета: ${roomCut} из ${n}` : (tc[k] ? `Нарезано по объекту, свободно: ${freePool}` : "Ещё не нарезано");
         const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || canGlue <= 0;
         const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { const q = canGlueIn(r, k); if (q > 0) mark(kind, k, q, {room: r.id}); }; all.disabled = !allowed(kind) || canGlue <= 0;
-        const rs = el("button", {className: "link", textContent: "Сбросить"}); rs.disabled = !allowed(kind) || d === 0;
-        rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id)[k] || 0; if (cur) mark(kind, k, -cur, {reset: true, room: r.id}); });
+        const rs = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"}); rs.disabled = !allowed(kind) || (doneBy(kind, r.id, resetWho())[k] || 0) <= 0;
+        rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id, resetWho())[k] || 0; if (cur > 0) mark(kind, k, -cur, {reset: true, room: r.id}); });
         card.append(el("div", {className: "gitem st-" + st},
           el("div", {className: "row"}, el("span", {className: "code", textContent: code(k)}), el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}), el("span", {className: "grow"}), tag),
           el("div", {className: "pnums"}, el("span", {className: "done"}, "Наклеено ", el("b", {textContent: `${d}/${n}`})), cutInfo ? el("span", {textContent: cutInfo}) : ""),
@@ -686,8 +696,8 @@ function renderProgressRooms(kind, box){
       const t = types[k] || {}, n = r.items[k], d = rd[k] || 0, l = n - d;
       const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || l <= 0;
       const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { if (l > 0) mark(kind, k, l, {room: r.id}); }; all.disabled = !allowed(kind) || l <= 0;
-      const rs = el("button", {className: "link", textContent: "Сбросить"}); rs.disabled = !allowed(kind) || d === 0;
-      rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id)[k] || 0; if (cur) mark(kind, k, -cur, {reset: true, room: r.id}); });
+      const rs = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"}); rs.disabled = !allowed(kind) || (doneBy(kind, r.id, resetWho())[k] || 0) <= 0;
+      rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id, resetWho())[k] || 0; if (cur > 0) mark(kind, k, -cur, {reset: true, room: r.id}); });
       card.append(el("div", {className: "item"},
         el("span", {className: "code", textContent: code(k)}),
         el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}),
