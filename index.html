@@ -321,9 +321,9 @@ let unsubs = [];
 let typesLoaded = false, roomsLoaded = false;
 let log = [];            // {id, kind:"cut"|"glue", num, q, by, at}
 let fs = null, auth = null, myId = null, names = {};
-let amOwner = false, me = null, usersMap = {}, prices = {cut: 0, glue: 0}, pricesLoaded = false;
+let amOwner = false, ownerUid = null, me = null, usersMap = {}, rates = {}, prices = {cut: 0, glue: 0}, pricesLoaded = false;
 let shifts = [], myShift = null, shiftWork = {};
-const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все вкладки"};
+const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все работы", manager: "Управление"};
 // Права на вкладки. Владелец может всё; остальным права выдаёт владелец на панели «Команда и права».
 function allowed(area){
   if (!canWrite) return false;
@@ -857,22 +857,25 @@ const dur = ms => { const m = Math.max(0, Math.round(ms / 60000)); return `${Mat
 const dateTime = t => t ? new Date(t).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—";
 const numOrNull = v => { const x = num(v); return isFinite(x) && String(v).trim() !== "" ? x : null; };
 
+// Управление: владелец или сотрудник с правом «Управление»
+const isManager = () => amOwner || !!(me && me.approved && (me.roles || []).includes("manager"));
 function renderMe(){
   const chip = $("meChip");
   const nm = me ? me.name : "";
   if (amOwner) chip.textContent = `${nm} · владелец, все права`;
   else if (me) {
     const r = me.roles || [];
-    chip.textContent = `${nm} · ` + (r.includes("admin") ? "все разделы" : r.length ? r.map(x => ROLE[x]).join(", ") : "только просмотр");
+    const work = r.filter(x => x !== "manager");
+    chip.textContent = `${nm} · ` + (r.includes("admin") ? "все разделы" : work.length ? work.map(x => ROLE[x]).join(", ") : "только просмотр") + (r.includes("manager") ? " + управление" : "");
   }
   if (myShift) chip.textContent += " · смена открыта";
-  $("navAdmin").classList.toggle("hidden", !amOwner);
+  $("navAdmin").classList.toggle("hidden", !isManager());
   $("navShift").classList.toggle("hidden", !me);
 }
 
 function myPrices(){
-  const r = me || {};
-  return {cut: r.rateCut != null ? r.rateCut : (prices.cut || 0), glue: r.rateGlue != null ? r.rateGlue : (prices.glue || 0)};
+  const r = rates[myId] || {};
+  return {cut: r.cut != null ? r.cut : (prices.cut || 0), glue: r.glue != null ? r.glue : (prices.glue || 0)};
 }
 function shiftWorkOf(s){
   const w = shiftWork[s.id];
@@ -909,7 +912,7 @@ function scheduleShiftWork(delay = 1500){
 // Для владельца: все отметки всех объектов, сгруппированные по сменам
 let allWorkBusy = false;
 async function loadAllWork(){
-  if (!amOwner || allWorkBusy) return;
+  if (!isManager() || allWorkBusy) return;
   allWorkBusy = true;
   try {
     const acc = {};
@@ -999,7 +1002,7 @@ function renderShift(){
 let adminPeriod = "7";
 function renderAdmin(){
   const box = $("tab-admin"); box.innerHTML = "";
-  if (!amOwner) return;
+  if (!isManager()) return;
 
   // цены
   const pc = el("input", {value: prices.cut || "", inputMode: "decimal", id: "prCut", placeholder: "0"});
@@ -1018,7 +1021,7 @@ function renderAdmin(){
 
   // сотрудники
   const uc = el("div", {className: "card"}, el("h2", {textContent: "Сотрудники"}));
-  const list = Object.entries(usersMap).filter(([id]) => id !== myId)
+  const list = Object.entries(usersMap).filter(([id]) => id !== myId && id !== ownerUid)
     .sort((a, b) => (!!a[1].approved - !!b[1].approved) || String(a[1].name).localeCompare(String(b[1].name), "ru"));
   if (!list.length) uc.append(el("div", {className: "empty", textContent: "Пока никто не зарегистрировался. Отправьте сотрудникам ссылку на сайт — они зарегистрируются и появятся здесь."}));
   for (const [id, u] of list) {
@@ -1026,22 +1029,24 @@ function renderAdmin(){
     const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
     const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
     const chips = el("div", {className: "chips"});
-    for (const key of ["measure", "cut", "glue", "admin"]) {
+    for (const key of ["measure", "cut", "glue", "admin", "manager"]) {
       const cb = el("input", {type: "checkbox", checked: (u.roles || []).includes(key), id: `role-${id}-${key}`});
       cb.onchange = () => { const r = new Set(u.roles || []); cb.checked ? r.add(key) : r.delete(key); upd({roles: [...r]}); };
       chips.append(el("label", {htmlFor: cb.id}, cb, ROLE[key]));
     }
-    const rc = el("input", {value: u.rateCut ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.cut)}`, id: `rc-${id}`});
-    const rg = el("input", {value: u.rateGlue ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.glue)}`, id: `rg-${id}`});
+    const ur = rates[id] || {};
+    const rc = el("input", {value: ur.cut ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.cut)}`, id: `rc-${id}`});
+    const rg = el("input", {value: ur.glue ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.glue)}`, id: `rg-${id}`});
     const rs = el("button", {className: "sec", textContent: "Сохранить ставки"});
-    rs.onclick = () => { upd({rateCut: numOrNull(rc.value), rateGlue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); };
+    // личные ставки лежат отдельно (rates/<id>): их видят только руководство и сам сотрудник
+    rs.onclick = async () => { try { await F.setDoc(F.doc(fs, "rates/" + id), {cut: numOrNull(rc.value), glue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); } catch(e) { toast(errMsg(e)); } };
     const del = el("button", {className: "link", textContent: "Удалить сотрудника"});
     del.onclick = () => confirmTap(del, async () => { try { await F.deleteDoc(ref); toast("Сотрудник удалён"); } catch(e) { toast(errMsg(e)); } });
     uc.append(el("div", {className: "member"},
       el("div", {className: "row"}, el("b", {className: "grow", textContent: u.name || "Без имени"}),
         el("span", {className: "pill" + (u.approved ? " ok" : ""), textContent: u.approved ? "работает" : "ждёт доступа"})),
       el("div", {className: "chips"}, el("label", {htmlFor: ap.id}, ap, "Доступ разрешён")),
-      el("div", {className: "empty", textContent: "Что может изменять:"}), chips,
+      el("div", {className: "empty", textContent: "Что может изменять («Управление» — доступ к этому разделу: сотрудники, цены, смены, оплата):"}), chips,
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
         el("div", {}, el("label", {htmlFor: rg.id, textContent: "Своя ставка: оклейка"}), rg)),
@@ -1333,7 +1338,7 @@ $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
 
 /* ---------- запуск ---------- */
 function view(name){ for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
-let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false;
+let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false, startedAsManager = false;
 
 function gate(){
   if (!ownerKnown || !meKnown) return;
@@ -1353,14 +1358,18 @@ function startData(){
   dataStarted = true;
   db = makeDb();
   let t = "measure"; try { t = localStorage.getItem("zamery-tab") || "measure"; } catch(e) {}
-  if (!TAB_TITLE[t] || (t === "admin" && !amOwner)) t = "measure";
+  if (!TAB_TITLE[t] || (t === "admin" && !isManager())) t = "measure";
   showTab(t);
   // цены, сотрудники, смены
   gsubs.push(F.onSnapshot(F.doc(fs, "settings/prices"), d => { prices = d.exists() ? d.data() : {cut: 0, glue: 0}; pricesLoaded = true; render(); }, () => { pricesLoaded = true; }));
   gsubs.push(F.onSnapshot(F.collection(fs, "users"), q => {
     usersMap = {}; q.forEach(d => { usersMap[d.id] = d.data(); names[d.id] = d.data().name || ""; }); render();
   }, () => {}));
-  const sq = amOwner ? F.collection(fs, "shifts") : F.query(F.collection(fs, "shifts"), F.where("uid", "==", myId));
+  startedAsManager = isManager();
+  const sq = startedAsManager ? F.collection(fs, "shifts") : F.query(F.collection(fs, "shifts"), F.where("uid", "==", myId));
+  // личные ставки: руководство видит все, сотрудник — только свою
+  if (startedAsManager) gsubs.push(F.onSnapshot(F.collection(fs, "rates"), q => { rates = {}; q.forEach(d => rates[d.id] = d.data()); render(); }, () => {}));
+  else gsubs.push(F.onSnapshot(F.doc(fs, "rates/" + myId), d => { rates = d.exists() ? {[myId]: d.data()} : {}; render(); }, () => {}));
   gsubs.push(F.onSnapshot(sq, q => {
     shifts = q.docs.map(d => ({id: d.id, ...d.data()}));
     const was = myShift && myShift.id;
@@ -1398,11 +1407,12 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
     view("loadView");
-    userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { amOwner = d.exists() && d.data().uid === myId; ownerKnown = true; gate(); },
+    userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
+      if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();
     }, () => { meKnown = true; gate(); }));
   });

@@ -14,11 +14,13 @@ service cloud.firestore {
     function hasRole(r) {
       return isOwner() || (approved() && (r in meDoc().get('roles', []) || 'admin' in meDoc().get('roles', [])));
     }
+    // «Управление»: владелец или сотрудник с правом manager
+    function isManager() { return isOwner() || (approved() && 'manager' in meDoc().get('roles', [])); }
     function priceDoc() { return get(/databases/$(database)/documents/settings/prices).data; }
     // Цена за м² для смены: личная ставка сотрудника, если задана, иначе стандартная
+    function rateDoc() { return /databases/$(database)/documents/rates/$(request.auth.uid); }
     function expPrice(k) {
-      let rk = k == 'cut' ? 'rateCut' : 'rateGlue';
-      let r = meDoc().get(rk, null);
+      let r = exists(rateDoc()) ? get(rateDoc()).data.get(k, null) : null;
       return r != null ? r : priceDoc().get(k, 0);
     }
 
@@ -37,13 +39,19 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && !('rateCut' in request.resource.data) && !('rateGlue' in request.resource.data);
-      allow update, delete: if isOwner();
+      allow update, delete: if isManager();
     }
 
     // Стандартные цены за м²
     match /settings/{id} {
       allow read: if approved();
-      allow write: if isOwner();
+      allow write: if isManager();
+    }
+
+    // Личные ставки: видят только руководство и сам сотрудник
+    match /rates/{uid} {
+      allow read: if isManager() || (signedIn() && request.auth.uid == uid);
+      allow write: if isManager();
     }
 
     // Объекты, окна, кабинеты — пишет только тот, у кого есть право «Замер»
@@ -58,24 +66,24 @@ service cloud.firestore {
         allow create: if request.resource.data.kind in ['cut', 'glue']
           && hasRole(request.resource.data.kind)
           && request.resource.data.by == request.auth.uid;
-        allow delete: if isOwner();
+        allow delete: if isManager();
       }
     }
 
     // Смены: сотрудник видит и закрывает только свои; цену подставить нельзя — она проверяется здесь
     match /shifts/{sid} {
-      allow read: if isOwner() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow read: if isManager() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if approved()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.end == null
         && request.resource.data.bonus == 0
         && request.resource.data.priceCut == expPrice('cut')
         && request.resource.data.priceGlue == expPrice('glue');
-      allow update: if isOwner() || (signedIn()
+      allow update: if isManager() || (signedIn()
         && resource.data.uid == request.auth.uid
         && resource.data.end == null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum']));
-      allow delete: if isOwner();
+      allow delete: if isManager();
     }
   }
 }
