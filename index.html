@@ -1050,9 +1050,12 @@ function renderAdmin(){
     const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
     const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
     const chips = el("div", {className: "chips"});
-    for (const key of ["measure", "cut", "glue", "admin", "manager"]) {
-      const cb = el("input", {type: "checkbox", checked: (u.roles || []).includes(key), id: `role-${id}-${key}`});
-      cb.onchange = () => { const r = new Set(u.roles || []); cb.checked ? r.add(key) : r.delete(key); upd({roles: [...r]}); };
+    // старое право «Все работы» (admin) показываем как три отдельные галочки
+    const cur = new Set(u.roles || []);
+    if (cur.has("admin")) { cur.delete("admin"); ["measure", "cut", "glue"].forEach(k => cur.add(k)); }
+    for (const key of ["measure", "cut", "glue", "manager"]) {
+      const cb = el("input", {type: "checkbox", checked: cur.has(key), id: `role-${id}-${key}`});
+      cb.onchange = () => { const r = new Set(cur); cb.checked ? r.add(key) : r.delete(key); upd({roles: [...r]}); };
       chips.append(el("label", {htmlFor: cb.id}, cb, ROLE[key]));
     }
     const ur = rates[id] || {};
