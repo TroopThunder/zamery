@@ -1183,14 +1183,17 @@ function renderAdmin(){
 async function downloadBackup(){
   toast("Собираю копию…");
   try {
-    const grab = async path => { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; };
+    // если какой-то раздел прочитать не удалось, копия всё равно скачается, а в файле будет пометка
+    const skipped = [];
+    const grab = async path => { try { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; } catch(e) { skipped.push(path); return {}; } };
     const out = {exportedAt: new Date().toISOString(), config: {owner: (await F.getDoc(F.doc(fs, "config/owner"))).data() || null}, settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
     for (const o of (await F.getDocs(F.collection(fs, "objects"))).docs)
       out.objects[o.id] = {data: o.data(), types: await grab(`objects/${o.id}/types`), rooms: await grab(`objects/${o.id}/rooms`), log: await grab(`objects/${o.id}/log`)};
+    if (skipped.length) out.skipped = skipped;
     const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
     const a = el("a", {href: URL.createObjectURL(blob), download: `zamery-kopiya-${new Date().toISOString().slice(0, 10)}.json`});
     document.body.append(a); a.click(); a.remove();
-    toast("Копия скачана");
+    toast(skipped.length ? `Копия скачана, но без разделов: ${skipped.join(", ")} — проверьте, что вставлены последние правила в Firebase` : "Копия скачана");
   } catch(e) { toast("Не удалось собрать копию: " + errMsg(e)); }
 }
 
