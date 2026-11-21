@@ -321,7 +321,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem" data-tab="settings">Настройки</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
-  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 22:25</div>
+  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 22:26</div>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -1716,10 +1716,7 @@ async function nameToEmail(name){
 function authError(e){
   const c = String(e && e.code || "");
   if (c.includes("email-already-in-use")) return "Это имя уже занято. Войдите или добавьте к имени фамилию.";
-  // Firebase различает «нет такого пользователя» и «не тот пароль», только если в консоли выключена защита от перебора почт
-  if (c.includes("user-not-found")) return "NOT_FOUND";
-  if (c.includes("wrong-password")) return "Неверный пароль. Проверьте раскладку и Caps Lock.";
-  if (c.includes("invalid-credential") || c.includes("invalid-login")) return "MAYBE_NOT_FOUND";
+  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found") || c.includes("invalid-login")) return "Неверное имя или пароль.";
   if (c.includes("weak-password")) return "Пароль должен быть не короче 6 символов.";
   if (c.includes("network")) return "Нет интернета. Проверьте связь и повторите.";
   if (c.includes("too-many-requests")) return "Слишком много попыток. Подождите пару минут.";
@@ -1755,17 +1752,7 @@ $("aGo").onclick = async () => {
       // первый зарегистрированный становится владельцем
       try { const o = await F.getDoc(F.doc(fs, "config/owner")); if (!o.exists()) await F.setDoc(F.doc(fs, "config/owner"), {uid: cred.user.uid, at: Date.now()}); } catch(e) {}
     }
-  } catch(e) {
-    const t = authError(e);
-    if (t === "NOT_FOUND" || t === "MAYBE_NOT_FOUND") {
-      msg.textContent = "";
-      const go = el("button", {className: "link", textContent: "Перейти к регистрации", style: "padding:4px 0"});
-      go.onclick = () => { const n = $("aName").value; setAuthMode("reg"); $("aName").value = n; $("aPass").value = ""; $("aPass").focus(); };
-      msg.append(t === "NOT_FOUND"
-        ? `Пользователь «${name}» не зарегистрирован. Сначала зарегистрируйтесь. `
-        : `Неверное имя или пароль. Если вы ещё не зарегистрированы — сначала зарегистрируйтесь. `, go);
-    } else msg.textContent = t;
-  }
+  } catch(e) { msg.textContent = authError(e); }
   $("aGo").disabled = false;
 };
 for (const id of ["aName", "aPass", "aPass2"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("aGo").click(); });
