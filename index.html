@@ -1521,8 +1521,8 @@ function applyLook(){
   root.style.setProperty("--accent", acc);
   root.style.setProperty("--accent-soft", soft);
   root.style.setProperty("--accent-ink", isDark ? "#14100c" : "#ffffff");
-  // верхняя полоска телефона — в цвет фона страницы (нижнюю Android красит по настройкам установки, её цвет тёмный)
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = isDark ? "#12171d" : "#eef1f4";
+  // верхняя полоска телефона — в главный цвет; нижнюю Android красит при установке (она тёмная, в тон фону)
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = acc;
 }
 function saveLook(){ try { localStorage.setItem("windows-look", JSON.stringify(look)); } catch(e) {} applyLook(); renderSettings(); }
 function renderSettings(){
