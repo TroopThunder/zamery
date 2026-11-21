@@ -319,10 +319,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
   <div class="navsep"></div>
   <button class="navitem" data-tab="settings">Настройки</button>
-  <button class="navitem hidden" id="installBtn">Установить приложение</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
-  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 19:26</div>
+  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 19:30</div>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -1823,10 +1822,6 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
 /* ---------- установка как приложение ---------- */
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("./sw.js").catch(() => {});
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-let installEvt = null;
-addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").classList.remove("hidden"); });
-$("installBtn").onclick = async () => { if (!installEvt) return; closeMenu(); installEvt.prompt(); try { await installEvt.userChoice; } catch(e) {} installEvt = null; $("installBtn").classList.add("hidden"); };
-addEventListener("appinstalled", () => { $("installBtn").classList.add("hidden"); toast("Приложение установлено"); });
 if (!standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)) $("iosHint").classList.remove("hidden");
 </script>
 </body>
