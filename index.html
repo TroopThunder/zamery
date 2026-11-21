@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#e2590f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Windows">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Windows</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -298,6 +306,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem hidden" data-tab="shift" id="navShift">Моя смена</button>
   <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
   <div class="navsep"></div>
+  <button class="navitem hidden" id="installBtn">Установить приложение</button>
+  <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
 </nav>
 <div class="toast hidden" id="toast"></div>
@@ -1754,6 +1764,15 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
   });
 }
 
+
+/* ---------- установка как приложение ---------- */
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("./sw.js").catch(() => {});
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let installEvt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; $("installBtn").classList.remove("hidden"); });
+$("installBtn").onclick = async () => { if (!installEvt) return; closeMenu(); installEvt.prompt(); try { await installEvt.userChoice; } catch(e) {} installEvt = null; $("installBtn").classList.add("hidden"); };
+addEventListener("appinstalled", () => { $("installBtn").classList.add("hidden"); toast("Приложение установлено"); });
+if (!standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)) $("iosHint").classList.remove("hidden");
 </script>
 </body>
 </html>
