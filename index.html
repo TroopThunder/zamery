@@ -136,6 +136,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .srow{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
 .srow:last-child{border-bottom:0}
 .money{font:600 15px var(--mono);color:var(--ok);white-space:nowrap}
+.swatches{display:flex;gap:12px;flex-wrap:wrap}
+.swatch{width:48px;height:48px;border-radius:50%;padding:0;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
 .hidden{display:none !important}
 @media (prefers-reduced-motion:no-preference){.type,.chip,button{transition:background .12s}}
 </style>
@@ -292,6 +295,15 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <!-- ===== СМЕНА / УПРАВЛЕНИЕ ===== -->
   <section id="tab-shift" class="hidden" style="flex-direction:column;gap:12px"></section>
   <section id="tab-admin" class="hidden" style="flex-direction:column;gap:12px"></section>
+  <section id="tab-settings" class="hidden" style="flex-direction:column;gap:12px">
+    <div class="card">
+      <h2>Тема</h2>
+      <div class="chips" id="themeChips"></div>
+      <h2>Главный цвет</h2>
+      <div class="swatches" id="accentChips"></div>
+      <div class="empty">Настройки сохраняются на этом устройстве и видны только вам.</div>
+    </div>
+  </section>
 </main>
 <div class="backdrop hidden" id="backdrop"></div>
 <nav id="drawer" aria-label="Разделы" aria-hidden="true">
@@ -306,6 +318,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem hidden" data-tab="shift" id="navShift">Моя смена</button>
   <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
   <div class="navsep"></div>
+  <button class="navitem" data-tab="settings">Настройки</button>
   <button class="navitem hidden" id="installBtn">Установить приложение</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
@@ -1486,6 +1499,44 @@ function liveCard(){
 // раз в минуту обновляем «идёт …» и «… мин назад», пока открыто «Управление»
 setInterval(() => { if (!$("tab-admin").classList.contains("hidden") && isManager()) render(); }, 60000);
 
+/* ---------- настройки внешнего вида: тема и главный цвет (на этом устройстве) ---------- */
+const ACCENTS = {
+  orange: {name: "Оранжевый", light: ["#e2590f", "#fde9dc"], dark: ["#ff7a33", "#3a2416"]},
+  blue:   {name: "Синий",     light: ["#1f6feb", "#dbe8fd"], dark: ["#4c9aff", "#16263d"]},
+  green:  {name: "Зелёный",   light: ["#1a8a4a", "#daf1e3"], dark: ["#3fcf7f", "#15301f"]},
+  teal:   {name: "Бирюзовый", light: ["#0f8b8d", "#d6f0f0"], dark: ["#33c3c5", "#12302f"]},
+  purple: {name: "Фиолетовый", light: ["#7a3fd1", "#ece2fb"], dark: ["#a77bff", "#2a2140"]},
+  red:    {name: "Красный",   light: ["#d0342c", "#fbe0de"], dark: ["#ff6b61", "#3a1d1b"]},
+  pink:   {name: "Розовый",   light: ["#d6336c", "#fbe0ea"], dark: ["#ff6b9e", "#3a1b28"]},
+};
+const THEMES = {auto: "Как в телефоне", light: "Светлая", dark: "Тёмная"};
+let look = {theme: "auto", accent: "orange"};
+try { look = {...look, ...JSON.parse(localStorage.getItem("windows-look") || "{}")}; } catch(e) {}
+const darkMq = matchMedia("(prefers-color-scheme: dark)");
+function applyLook(){
+  const root = document.documentElement;
+  if (look.theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", look.theme);
+  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
+  const a = ACCENTS[look.accent] || ACCENTS.orange, [acc, soft] = isDark ? a.dark : a.light;
+  root.style.setProperty("--accent", acc);
+  root.style.setProperty("--accent-soft", soft);
+  root.style.setProperty("--accent-ink", isDark ? "#14100c" : "#ffffff");
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = acc;
+}
+function saveLook(){ try { localStorage.setItem("windows-look", JSON.stringify(look)); } catch(e) {} applyLook(); renderSettings(); }
+function renderSettings(){
+  const tc = $("themeChips"); tc.innerHTML = "";
+  for (const [k, t] of Object.entries(THEMES)) { const b = el("button", {className: "chip", textContent: t}); b.setAttribute("aria-pressed", look.theme === k); b.onclick = () => { look.theme = k; saveLook(); }; tc.append(b); }
+  const ac = $("accentChips"); ac.innerHTML = "";
+  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
+  for (const [k, a] of Object.entries(ACCENTS)) {
+    const b = el("button", {className: "swatch", title: a.name, ariaLabel: a.name, style: `background:${(isDark ? a.dark : a.light)[0]}`});
+    b.setAttribute("aria-pressed", look.accent === k); b.onclick = () => { look.accent = k; saveLook(); }; ac.append(b);
+  }
+}
+darkMq.addEventListener("change", () => { applyLook(); renderSettings(); });
+applyLook(); renderSettings();
+
 function whereList(n){
   const byFloor = {};
   for (const r of [...rooms].sort((a, b) => byNum(a.floor, b.floor) || byNum(a.name, b.name)))
@@ -1564,7 +1615,7 @@ async function copyText(t, msg){
 }
 
 /* ---------- обработчики ---------- */
-const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление"};
+const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление", settings: "Настройки"};
 function showTab(name){
   for (const t of Object.keys(TAB_TITLE)) { const s = $("tab-" + t); s.classList.toggle("hidden", t !== name); s.style.display = t === name ? "flex" : ""; }
   document.querySelectorAll("#drawer .navitem[data-tab]").forEach(x => x.dataset.tab === name ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
