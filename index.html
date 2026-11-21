@@ -1052,6 +1052,7 @@ function renderAdmin(){
     if (c == null || g == null || c < 0 || g < 0) { toast("Введите обе цены числом"); return; }
     try { await F.setDoc(F.doc(fs, "settings/prices"), {cut: c, glue: g, updated: Date.now()}); toast("Цены сохранены. Они применятся к новым сменам."); } catch(e) { toast(errMsg(e)); }
   };
+  if (pricesLoaded && !(prices.cut > 0) && !(prices.glue > 0)) box.append(el("div", {className: "notice", textContent: "Стандартные цены ещё не указаны — сотрудники не смогут открыть смену. Укажите их ниже."}));
   box.append(el("div", {className: "card"}, el("h2", {textContent: "Стандартные цены за м²"}),
     el("div", {className: "grid2"},
       el("div", {}, el("label", {htmlFor: "prCut", textContent: "Нарезка, ₽/м²"}), pc),
@@ -1087,8 +1088,14 @@ function renderAdmin(){
       chips.append(el("label", {htmlFor: cb.id}, cb, ROLE[key]));
     }
     const ur = rates[id] || {};
-    const rc = el("input", {value: ur.cut ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.cut)}`, id: `rc-${id}`});
-    const rg = el("input", {value: ur.glue ?? "", inputMode: "decimal", placeholder: `станд. ${money(prices.glue)}`, id: `rg-${id}`});
+    const rc = el("input", {value: ur.cut ?? "", inputMode: "decimal", placeholder: `стандартная ${money(prices.cut)}`, id: `rc-${id}`});
+    const rg = el("input", {value: ur.glue ?? "", inputMode: "decimal", placeholder: `стандартная ${money(prices.glue)}`, id: `rg-${id}`});
+    // какая ставка действует сейчас: своя или стандартная (стандартная подставляется сама, вводить её не нужно)
+    const eff = (k, own) => own != null ? `${money(own)} ₽/м² (своя)` : `${money(prices[k] || 0)} ₽/м² (стандартная)`;
+    const effLine = el("div", {className: "pnums"}, el("span", {}, "Сейчас считается: нарезка ", el("b", {textContent: eff("cut", ur.cut)})), el("span", {}, "оклейка ", el("b", {textContent: eff("glue", ur.glue)})));
+    const back = el("button", {className: "link", textContent: "Вернуть стандартные"});
+    back.classList.toggle("hidden", ur.cut == null && ur.glue == null);
+    back.onclick = async () => { try { await F.deleteDoc(F.doc(fs, "rates/" + id)); toast("Теперь у сотрудника стандартные ставки"); } catch(e) { toast(errMsg(e)); } };
     const rs = el("button", {className: "sec", textContent: "Сохранить ставки"});
     // личные ставки лежат отдельно (rates/<id>): их видят только руководство и сам сотрудник
     rs.onclick = async () => { try { await F.setDoc(F.doc(fs, "rates/" + id), {cut: numOrNull(rc.value), glue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); } catch(e) { toast(errMsg(e)); } };
@@ -1102,7 +1109,9 @@ function renderAdmin(){
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
         el("div", {}, el("label", {htmlFor: rg.id, textContent: "Своя ставка: оклейка"}), rg)),
-      el("div", {className: "row"}, rs, el("span", {className: "grow"}), del)));
+      effLine,
+      el("div", {className: "empty", textContent: "Оставьте поле пустым — будет стандартная цена. Заполняйте, только если этому человеку нужна другая ставка."}),
+      el("div", {className: "row"}, rs, back, el("span", {className: "grow"}), del)));
   }
   uc.append(el("div", {className: "empty", textContent: "Забыл пароль: удалите сотрудника здесь и в консоли Firebase (Authentication → Users → его строка → Delete account). После этого он сможет зарегистрироваться заново с тем же именем."}));
   box.append(uc);
