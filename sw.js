@@ -1,7 +1,7 @@
 // Сервис-воркер Windows: позволяет установить сайт как приложение и открывать его при плохой связи.
 // Страница — «сначала сеть»: обновления видны сразу, а без интернета открывается последняя сохранённая версия.
 // Библиотеки (Firebase, Excel) — «сначала кэш»: их версии зафиксированы и не меняются.
-const CACHE = "windows-v1";
+const CACHE = "windows-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./favicon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {

@@ -6,7 +6,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#e2590f">
+<meta name="theme-color" content="#12171d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Windows">
@@ -1521,7 +1521,8 @@ function applyLook(){
   root.style.setProperty("--accent", acc);
   root.style.setProperty("--accent-soft", soft);
   root.style.setProperty("--accent-ink", isDark ? "#14100c" : "#ffffff");
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = acc;
+  // верхняя полоска телефона — в цвет фона страницы (нижнюю Android красит по настройкам установки, её цвет тёмный)
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = isDark ? "#12171d" : "#eef1f4";
 }
 function saveLook(){ try { localStorage.setItem("windows-look", JSON.stringify(look)); } catch(e) {} applyLook(); renderSettings(); }
 function renderSettings(){
