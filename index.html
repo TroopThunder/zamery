@@ -322,6 +322,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem hidden" id="installBtn">Установить приложение</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
+  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 19:26</div>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -1535,7 +1536,9 @@ function renderSettings(){
     b.setAttribute("aria-pressed", look.accent === k); b.onclick = () => { look.accent = k; saveLook(); }; ac.append(b);
   }
 }
-darkMq.addEventListener("change", () => { applyLook(); renderSettings(); });
+// старые iPhone (iOS 13 и раньше) знают только addListener
+const onScheme = () => { applyLook(); renderSettings(); };
+if (darkMq.addEventListener) darkMq.addEventListener("change", onScheme); else if (darkMq.addListener) darkMq.addListener(onScheme);
 applyLook(); renderSettings();
 
 function whereList(n){
