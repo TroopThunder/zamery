@@ -1,6 +1,6 @@
 {
-  "name": "Windows — замеры, нарезка, оклейка",
-  "short_name": "Windows",
+  "name": "Warp Pro — замеры, нарезка, оклейка",
+  "short_name": "Warp Pro",
   "description": "Замеры окон по объектам, нарезка, оклейка, смены и оплата",
   "lang": "ru",
   "start_url": "./",
