@@ -9,9 +9,60 @@
 <meta name="theme-color" content="#12171d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Warp Pro">
+<meta name="apple-mobile-web-app-title" content="Wrap PRO">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>Warp Pro</title>
+<script>
+/* Внешний вид: тема, главный цвет и эффект стекла.
+   Этот код стоит в <head> и срабатывает до показа страницы,
+   поэтому сохранённый цвет виден сразу, без мигания оранжевым. */
+(function(){
+  var KEY = "windows-look";
+  var ACCENTS = {
+    orange: {name: "Оранжевый", light: ["#e2590f", "#fde9dc"], dark: ["#ff7a33", "#3a2416"]},
+    blue:   {name: "Синий",     light: ["#1f6feb", "#dbe8fd"], dark: ["#4c9aff", "#16263d"]},
+    green:  {name: "Зелёный",   light: ["#1a8a4a", "#daf1e3"], dark: ["#3fcf7f", "#15301f"]},
+    teal:   {name: "Бирюзовый", light: ["#0f8b8d", "#d6f0f0"], dark: ["#33c3c5", "#12302f"]},
+    purple: {name: "Фиолетовый", light: ["#7a3fd1", "#ece2fb"], dark: ["#a77bff", "#2a2140"]},
+    red:    {name: "Красный",   light: ["#d0342c", "#fbe0de"], dark: ["#ff6b61", "#3a1d1b"]},
+    pink:   {name: "Розовый",   light: ["#d6336c", "#fbe0ea"], dark: ["#ff6b9e", "#3a1b28"]}
+  };
+  var DEF = {theme: "auto", accent: "orange", glass: 50, t: 0};
+  var darkMq = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : {matches: false};
+  function clean(o){
+    var l = {theme: DEF.theme, accent: DEF.accent, glass: DEF.glass, t: 0};
+    if (o && typeof o === "object") {
+      if (o.theme === "auto" || o.theme === "light" || o.theme === "dark") l.theme = o.theme;
+      if (ACCENTS[o.accent]) l.accent = o.accent;
+      var g = Number(o.glass); if (isFinite(g)) l.glass = Math.max(0, Math.min(100, Math.round(g)));
+      var t = Number(o.t); if (isFinite(t) && t > 0) l.t = t;
+    }
+    return l;
+  }
+  function load(){ try { return clean(JSON.parse(localStorage.getItem(KEY) || "{}")); } catch(e) { return clean(null); } }
+  function store(l){ try { localStorage.setItem(KEY, JSON.stringify(l)); return true; } catch(e) { return false; } }
+  function isDark(l){ return l.theme === "dark" || (l.theme === "auto" && darkMq.matches); }
+  function rgb(hex){ var n = parseInt(hex.slice(1), 16); return ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255); }
+  function apply(l){
+    var root = document.documentElement, dark = isDark(l);
+    if (l.theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", l.theme);
+    var a = ACCENTS[l.accent] || ACCENTS.orange, c = dark ? a.dark : a.light;
+    root.style.setProperty("--accent", c[0]);
+    root.style.setProperty("--accent-soft", c[1]);
+    root.style.setProperty("--accent-ink", dark ? "#14100c" : "#ffffff");
+    root.style.setProperty("--accent-rgb", rgb(c[0]));
+    // стекло: 0 — выключено, 100 — самое прозрачное и размытое
+    var g = l.glass;
+    root.classList.toggle("glass", g > 0);
+    root.style.setProperty("--glass-alpha", (0.9 - g * 0.006).toFixed(3));   // 0.9 … 0.3
+    root.style.setProperty("--glass-blur", Math.round(6 + g * 0.22) + "px");  // 6 … 28 px
+    root.style.setProperty("--glass-glow", (0.12 + g * 0.0028).toFixed(3));   // яркость цветных пятен фона
+    var m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = c[0];
+  }
+  window.LOOK = {ACCENTS: ACCENTS, darkMq: darkMq, load: load, store: store, clean: clean, apply: apply, isDark: isDark};
+  apply(load());
+})();
+</script>
+<title>Wrap PRO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -140,13 +191,45 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .swatch{width:48px;height:48px;border-radius:50%;padding:0;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
 .swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
 .hidden{display:none !important}
+/* ===== эффект стекла (включается в «Настройках», сила — ползунком) ===== */
+:root{--glass-tint:255,255,255;--glass-field:244,246,249;--glass-edge:rgba(255,255,255,.55);--glass-shadow:0 6px 24px rgba(20,30,45,.10);--accent-rgb:226,89,15}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}}
+:root[data-theme="dark"]{--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}
+/* цветные пятна позади стекла — без них размывать нечего */
+html.glass body{background:transparent}
+html.glass body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:
+  radial-gradient(70vmax 55vmax at 0% 0%, rgba(var(--accent-rgb),var(--glass-glow)), transparent 62%),
+  radial-gradient(60vmax 50vmax at 100% 35%, rgba(var(--accent-rgb),calc(var(--glass-glow) * .7)), transparent 60%),
+  radial-gradient(65vmax 55vmax at 25% 100%, rgba(90,140,255,calc(var(--glass-glow) * .6)), transparent 62%),
+  var(--bg)}
+/* крупные панели: полупрозрачные и размывают то, что под ними */
+html.glass .card,html.glass .tabs,html.glass .topbar,html.glass #drawer,html.glass .iconbtn,html.glass .authcard{
+  background:rgba(var(--glass-tint),var(--glass-alpha));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(170%);backdrop-filter:blur(var(--glass-blur)) saturate(170%);
+  border-color:var(--glass-edge);box-shadow:var(--glass-shadow)}
+html.glass .topbar{border-radius:14px;padding:6px 8px;margin:0 -8px;border:1px solid var(--glass-edge)}
+html.glass #drawer{background:rgba(var(--glass-tint),calc(var(--glass-alpha) + .08))}
+html.glass .backdrop{background:rgba(10,14,18,.25);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+/* мелкие элементы внутри панелей: только прозрачность (так быстрее на телефоне) */
+html.glass input,html.glass select,html.glass .chip,html.glass .type,html.glass .member .chips label{
+  background:rgba(var(--glass-field),calc(var(--glass-alpha) * .8));border-color:var(--glass-edge)}
+html.glass .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink)}
+html.glass button.sec{background:rgba(var(--glass-tint),.25);border-color:var(--glass-edge)}
+html.glass .notice{background:rgba(var(--accent-rgb),.14)}
+html.glass .toast{-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+/* ползунок силы стекла */
+.glassrow{display:flex;align-items:center;gap:12px}
+.glassrow input[type=range]{flex:1;padding:0;border:0;background:none;accent-color:var(--accent);height:32px}
+.glassrow output{font:600 14px var(--mono);min-width:4.5em;text-align:right;color:var(--muted)}
+html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;background:rgba(var(--glass-field),.35)}
+
 @media (prefers-reduced-motion:no-preference){.type,.chip,button{transition:background .12s}}
 </style>
 </head>
 <body>
 <div id="authView" class="authwrap hidden">
   <div class="card authcard">
-    <div class="apptitle">Warp Pro</div>
+    <div class="apptitle">Wrap PRO</div>
     <h1 id="authTitle">Вход</h1>
     <div class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
       <button id="aLogin" role="tab" aria-selected="true">Вход</button>
@@ -178,7 +261,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <button id="menuBtn" class="iconbtn" aria-label="Открыть меню" aria-controls="drawer" aria-expanded="false">
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
-    <div class="grow"><div class="apptitle">Warp Pro</div><h1 id="pageTitle">Замер</h1></div>
+    <div class="grow"><div class="apptitle">Wrap PRO</div><h1 id="pageTitle">Замер</h1></div>
   </header>
   <div class="row" id="meRow"><span id="meChip" class="pill">Загружаю профиль…</span></div>
   <div id="status" class="notice hidden"></div>
@@ -301,13 +384,16 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       <div class="chips" id="themeChips"></div>
       <h2>Главный цвет</h2>
       <div class="swatches" id="accentChips"></div>
-      <div class="empty">Настройки сохраняются на этом устройстве и видны только вам.</div>
+      <h2>Эффект стекла</h2>
+      <div class="glassrow"><input type="range" id="glassRange" min="0" max="100" step="5" aria-label="Сила эффекта стекла"><output id="glassVal" for="glassRange"></output></div>
+      <div class="chips" id="glassChips"></div>
+      <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
   </section>
 </main>
 <div class="backdrop hidden" id="backdrop"></div>
 <nav id="drawer" aria-label="Разделы" aria-hidden="true">
-  <div class="drawer-head"><b>Warp Pro</b><button class="iconbtn" id="menuClose" aria-label="Закрыть меню">
+  <div class="drawer-head"><b>Wrap PRO</b><button class="iconbtn" id="menuClose" aria-label="Закрыть меню">
     <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
   <button class="navitem" data-tab="measure">Замер</button>
   <button class="navitem" data-tab="types">Окна</button>
@@ -321,7 +407,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem" data-tab="settings">Настройки</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
-  <div class="empty" style="padding:12px;font-size:12px">Версия от 22.11.2026 17:43</div>
+  <div class="empty" style="padding:12px;font-size:12px">Версия от 22.11.2026 18:27</div>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -1500,45 +1586,55 @@ function liveCard(){
 // раз в минуту обновляем «идёт …» и «… мин назад», пока открыто «Управление»
 setInterval(() => { if (!$("tab-admin").classList.contains("hidden") && isManager()) render(); }, 60000);
 
-/* ---------- настройки внешнего вида: тема и главный цвет (на этом устройстве) ---------- */
-const ACCENTS = {
-  orange: {name: "Оранжевый", light: ["#e2590f", "#fde9dc"], dark: ["#ff7a33", "#3a2416"]},
-  blue:   {name: "Синий",     light: ["#1f6feb", "#dbe8fd"], dark: ["#4c9aff", "#16263d"]},
-  green:  {name: "Зелёный",   light: ["#1a8a4a", "#daf1e3"], dark: ["#3fcf7f", "#15301f"]},
-  teal:   {name: "Бирюзовый", light: ["#0f8b8d", "#d6f0f0"], dark: ["#33c3c5", "#12302f"]},
-  purple: {name: "Фиолетовый", light: ["#7a3fd1", "#ece2fb"], dark: ["#a77bff", "#2a2140"]},
-  red:    {name: "Красный",   light: ["#d0342c", "#fbe0de"], dark: ["#ff6b61", "#3a1d1b"]},
-  pink:   {name: "Розовый",   light: ["#d6336c", "#fbe0ea"], dark: ["#ff6b9e", "#3a1b28"]},
-};
+/* ---------- настройки внешнего вида: тема, главный цвет, стекло ----------
+   Сам выбор применяется ещё в <head> (look_head.js), здесь — экран настроек.
+   Сохраняется на устройстве сразу и в аккаунте (prefs/<uid>), чтобы цвет
+   был тем же и на другом телефоне, и после переустановки приложения. */
+const ACCENTS = LOOK.ACCENTS, darkMq = LOOK.darkMq;
 const THEMES = {auto: "Как в телефоне", light: "Светлая", dark: "Тёмная"};
-let look = {theme: "auto", accent: "orange"};
-try { look = {...look, ...JSON.parse(localStorage.getItem("windows-look") || "{}")}; } catch(e) {}
-const darkMq = matchMedia("(prefers-color-scheme: dark)");
-function applyLook(){
-  const root = document.documentElement;
-  if (look.theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", look.theme);
-  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
-  const a = ACCENTS[look.accent] || ACCENTS.orange, [acc, soft] = isDark ? a.dark : a.light;
-  root.style.setProperty("--accent", acc);
-  root.style.setProperty("--accent-soft", soft);
-  root.style.setProperty("--accent-ink", isDark ? "#14100c" : "#ffffff");
-  // верхняя полоска телефона — в главный цвет; нижнюю Android красит при установке (она тёмная, в тон фону)
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = acc;
+const GLASS = {0: "Выкл", 30: "Лёгкое", 60: "Среднее", 90: "Сильное"};
+let look = LOOK.load();
+const applyLook = () => LOOK.apply(look);
+let lookPushT = null;
+function pushLook(){
+  clearTimeout(lookPushT);
+  if (!fs || !myId) return;
+  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}).catch(() => {}); }, 700);
 }
-function saveLook(){ try { localStorage.setItem("windows-look", JSON.stringify(look)); } catch(e) {} applyLook(); renderSettings(); }
+function saveLook(){ look.t = Date.now(); LOOK.store(look); applyLook(); renderSettings(); pushLook(); }
+// при входе: берём из аккаунта, если там выбор новее, чем на этом устройстве
+async function loadLookFromAccount(){
+  if (!fs || !myId) return;
+  try {
+    const d = await F.getDoc(F.doc(fs, "prefs/" + myId));
+    const remote = d.exists() && d.data().look ? LOOK.clean(d.data().look) : null;
+    if (remote && remote.t > (look.t || 0)) { look = remote; LOOK.store(look); applyLook(); renderSettings(); }
+    else if (look.t && (!remote || look.t > remote.t)) pushLook();
+  } catch(e) { /* нет связи или правила ещё не обновлены — остаётся выбор с устройства */ }
+}
+function glassLabel(g){ return g === 0 ? "выкл" : g + "%"; }
 function renderSettings(){
   const tc = $("themeChips"); tc.innerHTML = "";
   for (const [k, t] of Object.entries(THEMES)) { const b = el("button", {className: "chip", textContent: t}); b.setAttribute("aria-pressed", look.theme === k); b.onclick = () => { look.theme = k; saveLook(); }; tc.append(b); }
   const ac = $("accentChips"); ac.innerHTML = "";
-  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
+  const isDark = LOOK.isDark(look);
   for (const [k, a] of Object.entries(ACCENTS)) {
     const b = el("button", {className: "swatch", title: a.name, ariaLabel: a.name, style: `background:${(isDark ? a.dark : a.light)[0]}`});
     b.setAttribute("aria-pressed", look.accent === k); b.onclick = () => { look.accent = k; saveLook(); }; ac.append(b);
   }
+  const r = $("glassRange"); if (document.activeElement !== r) r.value = look.glass;
+  $("glassVal").textContent = glassLabel(look.glass);
+  const gc = $("glassChips"); gc.innerHTML = "";
+  for (const [v, t] of Object.entries(GLASS)) { const b = el("button", {className: "chip", textContent: t}); b.setAttribute("aria-pressed", look.glass === +v); b.onclick = () => { look.glass = +v; saveLook(); }; gc.append(b); }
 }
+// ползунок: пока двигают — сразу показываем, сохраняем, когда отпустили
+$("glassRange").addEventListener("input", e => { look.glass = +e.target.value; applyLook(); $("glassVal").textContent = glassLabel(look.glass); });
+$("glassRange").addEventListener("change", () => saveLook());
 // старые iPhone (iOS 13 и раньше) знают только addListener
 const onScheme = () => { applyLook(); renderSettings(); };
 if (darkMq.addEventListener) darkMq.addEventListener("change", onScheme); else if (darkMq.addListener) darkMq.addListener(onScheme);
+// выбор, сделанный в другой вкладке, сразу применяется и здесь
+addEventListener("storage", e => { if (e.key === "windows-look") { look = LOOK.load(); applyLook(); renderSettings(); } });
 applyLook(); renderSettings();
 
 /* ---------- в меню только те разделы, которые человеку разрешены ---------- */
@@ -1865,6 +1961,7 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
+    loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));

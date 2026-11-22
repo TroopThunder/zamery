@@ -236,45 +236,55 @@ function liveCard(){
 // раз в минуту обновляем «идёт …» и «… мин назад», пока открыто «Управление»
 setInterval(() => { if (!$("tab-admin").classList.contains("hidden") && isManager()) render(); }, 60000);
 
-/* ---------- настройки внешнего вида: тема и главный цвет (на этом устройстве) ---------- */
-const ACCENTS = {
-  orange: {name: "Оранжевый", light: ["#e2590f", "#fde9dc"], dark: ["#ff7a33", "#3a2416"]},
-  blue:   {name: "Синий",     light: ["#1f6feb", "#dbe8fd"], dark: ["#4c9aff", "#16263d"]},
-  green:  {name: "Зелёный",   light: ["#1a8a4a", "#daf1e3"], dark: ["#3fcf7f", "#15301f"]},
-  teal:   {name: "Бирюзовый", light: ["#0f8b8d", "#d6f0f0"], dark: ["#33c3c5", "#12302f"]},
-  purple: {name: "Фиолетовый", light: ["#7a3fd1", "#ece2fb"], dark: ["#a77bff", "#2a2140"]},
-  red:    {name: "Красный",   light: ["#d0342c", "#fbe0de"], dark: ["#ff6b61", "#3a1d1b"]},
-  pink:   {name: "Розовый",   light: ["#d6336c", "#fbe0ea"], dark: ["#ff6b9e", "#3a1b28"]},
-};
+/* ---------- настройки внешнего вида: тема, главный цвет, стекло ----------
+   Сам выбор применяется ещё в <head> (look_head.js), здесь — экран настроек.
+   Сохраняется на устройстве сразу и в аккаунте (prefs/<uid>), чтобы цвет
+   был тем же и на другом телефоне, и после переустановки приложения. */
+const ACCENTS = LOOK.ACCENTS, darkMq = LOOK.darkMq;
 const THEMES = {auto: "Как в телефоне", light: "Светлая", dark: "Тёмная"};
-let look = {theme: "auto", accent: "orange"};
-try { look = {...look, ...JSON.parse(localStorage.getItem("windows-look") || "{}")}; } catch(e) {}
-const darkMq = matchMedia("(prefers-color-scheme: dark)");
-function applyLook(){
-  const root = document.documentElement;
-  if (look.theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", look.theme);
-  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
-  const a = ACCENTS[look.accent] || ACCENTS.orange, [acc, soft] = isDark ? a.dark : a.light;
-  root.style.setProperty("--accent", acc);
-  root.style.setProperty("--accent-soft", soft);
-  root.style.setProperty("--accent-ink", isDark ? "#14100c" : "#ffffff");
-  // верхняя полоска телефона — в главный цвет; нижнюю Android красит при установке (она тёмная, в тон фону)
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = acc;
+const GLASS = {0: "Выкл", 30: "Лёгкое", 60: "Среднее", 90: "Сильное"};
+let look = LOOK.load();
+const applyLook = () => LOOK.apply(look);
+let lookPushT = null;
+function pushLook(){
+  clearTimeout(lookPushT);
+  if (!fs || !myId) return;
+  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}).catch(() => {}); }, 700);
 }
-function saveLook(){ try { localStorage.setItem("windows-look", JSON.stringify(look)); } catch(e) {} applyLook(); renderSettings(); }
+function saveLook(){ look.t = Date.now(); LOOK.store(look); applyLook(); renderSettings(); pushLook(); }
+// при входе: берём из аккаунта, если там выбор новее, чем на этом устройстве
+async function loadLookFromAccount(){
+  if (!fs || !myId) return;
+  try {
+    const d = await F.getDoc(F.doc(fs, "prefs/" + myId));
+    const remote = d.exists() && d.data().look ? LOOK.clean(d.data().look) : null;
+    if (remote && remote.t > (look.t || 0)) { look = remote; LOOK.store(look); applyLook(); renderSettings(); }
+    else if (look.t && (!remote || look.t > remote.t)) pushLook();
+  } catch(e) { /* нет связи или правила ещё не обновлены — остаётся выбор с устройства */ }
+}
+function glassLabel(g){ return g === 0 ? "выкл" : g + "%"; }
 function renderSettings(){
   const tc = $("themeChips"); tc.innerHTML = "";
   for (const [k, t] of Object.entries(THEMES)) { const b = el("button", {className: "chip", textContent: t}); b.setAttribute("aria-pressed", look.theme === k); b.onclick = () => { look.theme = k; saveLook(); }; tc.append(b); }
   const ac = $("accentChips"); ac.innerHTML = "";
-  const isDark = look.theme === "dark" || (look.theme === "auto" && darkMq.matches);
+  const isDark = LOOK.isDark(look);
   for (const [k, a] of Object.entries(ACCENTS)) {
     const b = el("button", {className: "swatch", title: a.name, ariaLabel: a.name, style: `background:${(isDark ? a.dark : a.light)[0]}`});
     b.setAttribute("aria-pressed", look.accent === k); b.onclick = () => { look.accent = k; saveLook(); }; ac.append(b);
   }
+  const r = $("glassRange"); if (document.activeElement !== r) r.value = look.glass;
+  $("glassVal").textContent = glassLabel(look.glass);
+  const gc = $("glassChips"); gc.innerHTML = "";
+  for (const [v, t] of Object.entries(GLASS)) { const b = el("button", {className: "chip", textContent: t}); b.setAttribute("aria-pressed", look.glass === +v); b.onclick = () => { look.glass = +v; saveLook(); }; gc.append(b); }
 }
+// ползунок: пока двигают — сразу показываем, сохраняем, когда отпустили
+$("glassRange").addEventListener("input", e => { look.glass = +e.target.value; applyLook(); $("glassVal").textContent = glassLabel(look.glass); });
+$("glassRange").addEventListener("change", () => saveLook());
 // старые iPhone (iOS 13 и раньше) знают только addListener
 const onScheme = () => { applyLook(); renderSettings(); };
 if (darkMq.addEventListener) darkMq.addEventListener("change", onScheme); else if (darkMq.addListener) darkMq.addListener(onScheme);
+// выбор, сделанный в другой вкладке, сразу применяется и здесь
+addEventListener("storage", e => { if (e.key === "windows-look") { look = LOOK.load(); applyLook(); renderSettings(); } });
 applyLook(); renderSettings();
 
 /* ---------- в меню только те разделы, которые человеку разрешены ---------- */

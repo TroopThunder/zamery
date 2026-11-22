@@ -143,6 +143,7 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
+    loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));

@@ -1,0 +1,31 @@
+/* ===== эффект стекла (включается в «Настройках», сила — ползунком) ===== */
+:root{--glass-tint:255,255,255;--glass-field:244,246,249;--glass-edge:rgba(255,255,255,.55);--glass-shadow:0 6px 24px rgba(20,30,45,.10);--accent-rgb:226,89,15}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}}
+:root[data-theme="dark"]{--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}
+/* цветные пятна позади стекла — без них размывать нечего */
+html.glass body{background:transparent}
+html.glass body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:
+  radial-gradient(70vmax 55vmax at 0% 0%, rgba(var(--accent-rgb),var(--glass-glow)), transparent 62%),
+  radial-gradient(60vmax 50vmax at 100% 35%, rgba(var(--accent-rgb),calc(var(--glass-glow) * .7)), transparent 60%),
+  radial-gradient(65vmax 55vmax at 25% 100%, rgba(90,140,255,calc(var(--glass-glow) * .6)), transparent 62%),
+  var(--bg)}
+/* крупные панели: полупрозрачные и размывают то, что под ними */
+html.glass .card,html.glass .tabs,html.glass .topbar,html.glass #drawer,html.glass .iconbtn,html.glass .authcard{
+  background:rgba(var(--glass-tint),var(--glass-alpha));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(170%);backdrop-filter:blur(var(--glass-blur)) saturate(170%);
+  border-color:var(--glass-edge);box-shadow:var(--glass-shadow)}
+html.glass .topbar{border-radius:14px;padding:6px 8px;margin:0 -8px;border:1px solid var(--glass-edge)}
+html.glass #drawer{background:rgba(var(--glass-tint),calc(var(--glass-alpha) + .08))}
+html.glass .backdrop{background:rgba(10,14,18,.25);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+/* мелкие элементы внутри панелей: только прозрачность (так быстрее на телефоне) */
+html.glass input,html.glass select,html.glass .chip,html.glass .type,html.glass .member .chips label{
+  background:rgba(var(--glass-field),calc(var(--glass-alpha) * .8));border-color:var(--glass-edge)}
+html.glass .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink)}
+html.glass button.sec{background:rgba(var(--glass-tint),.25);border-color:var(--glass-edge)}
+html.glass .notice{background:rgba(var(--accent-rgb),.14)}
+html.glass .toast{-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+/* ползунок силы стекла */
+.glassrow{display:flex;align-items:center;gap:12px}
+.glassrow input[type=range]{flex:1;padding:0;border:0;background:none;accent-color:var(--accent);height:32px}
+.glassrow output{font:600 14px var(--mono);min-width:4.5em;text-align:right;color:var(--muted)}
+html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;background:rgba(var(--glass-field),.35)}

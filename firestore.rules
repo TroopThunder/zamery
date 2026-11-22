@@ -1,5 +1,5 @@
 rules_version = '2';
-// Правила доступа к базе «Замеры окон».
+// Правила доступа к базе Wrap PRO.
 // Владелец — тот, кто зарегистрировался первым (записан в config/owner).
 // Остальные получают доступ только после одобрения владельцем и только к своим разделам.
 service cloud.firestore {
@@ -40,6 +40,11 @@ service cloud.firestore {
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && !('rateCut' in request.resource.data) && !('rateGlue' in request.resource.data);
       allow update, delete: if isManager();
+    }
+
+    // Личные настройки внешнего вида (тема, цвет, стекло): каждый видит и меняет только свои
+    match /prefs/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
     // Стандартные цены за м²

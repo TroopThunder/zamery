@@ -10,7 +10,7 @@ s=re.sub(r'\n  <div class="card hidden" id="teamCard">.*?\n  </div>\n','\n',s,co
 assert 'id="teamCard"' not in s
 rep('<main>','''<div id="authView" class="authwrap hidden">
   <div class="card authcard">
-    <div class="apptitle">Замеры окон</div>
+    <div class="apptitle">Wrap PRO</div>
     <h1 id="authTitle">Вход</h1>
     <div class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
       <button id="aLogin" role="tab" aria-selected="true">Вход</button>
@@ -60,7 +60,10 @@ rep('''    <div class="card" id="summaryFloors"></div>
       <div class="chips" id="themeChips"></div>
       <h2>Главный цвет</h2>
       <div class="swatches" id="accentChips"></div>
-      <div class="empty">Настройки сохраняются на этом устройстве и видны только вам.</div>
+      <h2>Эффект стекла</h2>
+      <div class="glassrow"><input type="range" id="glassRange" min="0" max="100" step="5" aria-label="Сила эффекта стекла"><output id="glassVal" for="glassRange"></output></div>
+      <div class="chips" id="glassChips"></div>
+      <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
   </section>
 </main>''')
@@ -96,7 +99,8 @@ rep('.hidden{display:none !important}','''.authwrap{min-height:100vh;display:gri
 .swatches{display:flex;gap:12px;flex-wrap:wrap}
 .swatch{width:48px;height:48px;border-radius:50%;padding:0;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
 .swatch[aria-pressed="true"]{box-shadow:0 0 0 3px var(--ink)}
-.hidden{display:none !important}''')
+.hidden{display:none !important}
+'''+open(os.path.join(SRC,'glass.css'),encoding='utf-8').read())
 
 # ---------- приложение на телефоне (PWA) ----------
 rep('<meta name="viewport" content="width=device-width, initial-scale=1">','''<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -106,8 +110,10 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">','''<m
 <meta name="theme-color" content="#12171d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Warp Pro">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">''')
+<meta name="apple-mobile-web-app-title" content="Wrap PRO">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>
+'''+open(os.path.join(SRC,'look_head.js'),encoding='utf-8').read()+'''</script>''')
 rep('''  <button class="navitem" id="logoutBtn">Выйти</button>''','''  <button class="navitem" data-tab="settings">Настройки</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>''')
@@ -234,9 +240,9 @@ $("teamClose").onclick = () => $("teamCard").classList.add("hidden");
 ''','')
 
 # startup
-i=s.index('/* ---------- запуск ---------- */'); j=s.index('</script>')
+i=s.index('/* ---------- запуск ---------- */'); j=s.index('</script>', i)
 s=s[:i]+open(os.path.join(SRC,'startup.js'),encoding='utf-8').read()+'\n'+s[j:]
-s=s.replace('Замеры окон','Warp Pro')
+s=s.replace('Замеры окон','Wrap PRO')
 # регистрация сервис-воркера и кнопка установки
 s=s.replace('</script>\n</body>','''
 /* ---------- установка как приложение ---------- */
