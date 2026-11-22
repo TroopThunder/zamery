@@ -1,8 +1,8 @@
 // Сервис-воркер Wrap PRO: позволяет установить сайт как приложение и открывать его при плохой связи.
 // Страница — «сначала сеть»: обновления видны сразу, а без интернета открывается последняя сохранённая версия.
 // Библиотеки (Firebase, Excel) — «сначала кэш»: их версии зафиксированы и не меняются.
-const CACHE = "wrappro-v4";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./favicon.png"];
+const CACHE = "wrappro-v5";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png?v=2", "./icon-512.png?v=2", "./icon-maskable-512.png?v=2", "./apple-touch-icon.png?v=2", "./favicon.png?v=2"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));

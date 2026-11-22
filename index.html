@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon.png?v=2">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
 <meta name="theme-color" content="#12171d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -57,6 +57,31 @@
     root.style.setProperty("--glass-blur", Math.round(6 + g * 0.22) + "px");  // 6 … 28 px
     root.style.setProperty("--glass-glow", (0.12 + g * 0.0028).toFixed(3));   // яркость цветных пятен фона
     var m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = c[0];
+    setIcon(a.light[0]);
+  }
+  // иконка во вкладке браузера — того же цвета, что выбран в «Настройках».
+  // Рисуем её сами: белое окно на квадрате главного цвета (как favicon.png).
+  var iconColor = null;
+  function setIcon(color){
+    if (color === iconColor) return;
+    try {
+      var s = 64, cv = document.createElement("canvas"); cv.width = cv.height = s;
+      var x = cv.getContext("2d"); if (!x) return;
+      function rr(px, py, w, h, r, add){ if (!add) x.beginPath(); x.moveTo(px + r, py); x.arcTo(px + w, py, px + w, py + h, r); x.arcTo(px + w, py + h, px, py + h, r); x.arcTo(px, py + h, px, py, r); x.arcTo(px, py, px + w, py, r); x.closePath(); }
+      rr(0, 0, s, s, 14); x.fillStyle = color; x.fill();
+      var o = 13, f = 38, b = 4;                       // рама окна: отступ, размер, толщина
+      x.fillStyle = "rgba(255,255,255,.22)"; x.fillRect(o + 1, o + 1, f - 2, f - 2);   // стёкла
+      x.fillStyle = "#fff";
+      rr(o, o, f, f, 2); rr(o + b, o + b, f - 2 * b, f - 2 * b, 0.5, true);
+      x.fill("evenodd");                               // рама
+      x.fillRect(s / 2 - b / 2, o, b, f);              // вертикальная перекладина
+      x.fillRect(o, 27, f, b);                         // горизонтальная перекладина
+      var url = cv.toDataURL("image/png");
+      var links = document.querySelectorAll('link[rel="icon"]');
+      if (!links.length) { var l = document.createElement("link"); l.rel = "icon"; document.head.appendChild(l); links = [l]; }
+      for (var i = 0; i < links.length; i++) { links[i].type = "image/png"; links[i].href = url; }
+      iconColor = color;
+    } catch(e) { /* не получилось — остаётся обычный favicon.png */ }
   }
   window.LOOK = {ACCENTS: ACCENTS, darkMq: darkMq, load: load, store: store, clean: clean, apply: apply, isDark: isDark};
   apply(load());
@@ -390,7 +415,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 22.11.2026 19:48</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 22.11.2026 20:01</div>
   </section>
 </main>
 <div class="backdrop hidden" id="backdrop"></div>
