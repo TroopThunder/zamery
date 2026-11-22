@@ -2,7 +2,7 @@
 
 Сайт: https://troopthunder.github.io/zamery/ (GitHub Pages, ветка main, корень).
 Свой домен warppro-master.ru куплен в Timeweb; DNS настроен (4 записи A на 185.199.108–111.153, CNAME www → troopthunder.github.io).
-Домен временно отключён (файла CNAME нет) — подключить заново: создать файл CNAME с текстом `warppro-master.ru`, затем в Settings → Pages включить Enforce HTTPS.
+Домен подключён 22.11.2026 (файл CNAME в корне). Осталось: в Settings → Pages включить Enforce HTTPS, когда станет доступно.
 
 База и вход — Firebase (проект window-5b98a): Auth (вход по имени → служебная почта uXXXX@zamery.app) и Firestore.
 Правила доступа — firestore.rules (в т.ч. `prefs/{uid}` — личные настройки вида, синхронизируются между устройствами); после push в main они сами загружаются в Firebase через GitHub Actions (workflow «Загрузка правил в Firebase», нужен секрет FIREBASE_SERVICE_ACCOUNT); запасной путь — вставить файл в Firebase → Firestore → Rules → Publish.
