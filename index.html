@@ -321,7 +321,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <button class="navitem" data-tab="settings">Настройки</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
-  <div class="empty" style="padding:12px;font-size:12px">Версия от 21.11.2026 22:26</div>
+  <div class="empty" style="padding:12px;font-size:12px">Версия от 22.11.2026 12:23</div>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -1268,6 +1268,7 @@ const canEditTypes = () => isManager();
 let renameTarget = null, roomQuery = "";
 
 function afterRender(){
+  applyTabAccess();
   const m = allowed("measure");
   // без права «Замер» не показываем поля ввода и кнопки, которые всё равно не работают
   $("inW").closest(".row").classList.toggle("hidden", !m);
@@ -1539,6 +1540,41 @@ function renderSettings(){
 const onScheme = () => { applyLook(); renderSettings(); };
 if (darkMq.addEventListener) darkMq.addEventListener("change", onScheme); else if (darkMq.addListener) darkMq.addListener(onScheme);
 applyLook(); renderSettings();
+
+/* ---------- в меню только те разделы, которые человеку разрешены ---------- */
+function hasRole(area){
+  if (amOwner) return true;
+  const r = (me && me.approved && me.roles) || [];
+  return r.includes("admin") || r.includes(area);
+}
+function visibleTabs(){
+  const m = hasRole("measure"), c = hasRole("cut"), g = hasRole("glue"), mg = isManager();
+  return {
+    measure: m, types: m,            // замеры и список окон — замерщикам
+    cut: c, glue: g,                 // нарезка и оклейка — по своим правам
+    summary: m || mg,                // сводка по объекту — замерщикам и руководству
+    shift: c || g || amOwner,        // смены и заработок — тем, кто режет или клеит
+    admin: mg,                       // управление — владельцу и руководству
+    settings: true,                  // тема и цвет — всем
+  };
+}
+let tabGuard = false;
+function applyTabAccess(){
+  if (!me && !amOwner) return;
+  const vis = visibleTabs();
+  document.querySelectorAll("#drawer .navitem[data-tab]").forEach(b => b.classList.toggle("hidden", !vis[b.dataset.tab]));
+  // если открыт раздел, к которому нет доступа, — переходим на первый доступный
+  const cur = Object.keys(TAB_TITLE).find(t => !$("tab-" + t).classList.contains("hidden"));
+  if (cur && !vis[cur] && !tabGuard) {
+    const first = ["measure", "cut", "glue", "shift", "summary", "admin", "settings"].find(t => vis[t]) || "settings";
+    tabGuard = true; showTab(first); tabGuard = false;
+  }
+  const none = !["measure", "cut", "glue", "admin"].some(t => vis[t]);
+  $("objCard").classList.toggle("hidden", !(vis.measure || vis.cut || vis.glue || vis.summary));
+  let note = $("noAccessNote");
+  if (none && !note) { note = el("div", {className: "notice", id: "noAccessNote", textContent: "Вам пока не выданы разделы для работы. Попросите владельца отметить ваши права в «Управлении». Сейчас доступны только настройки."}); $("meRow").after(note); }
+  if (!none && note) note.remove();
+}
 
 function whereList(n){
   const byFloor = {};
