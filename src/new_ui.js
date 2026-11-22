@@ -21,9 +21,22 @@ function renderMe(){
   $("navShift").classList.toggle("hidden", !me);
 }
 
-function myPrices(){
-  const r = rates[myId] || {};
+// Действующая ставка сотрудника: личная, если задана, иначе стандартная
+function ratesFor(uid){
+  const r = rates[uid] || {};
   return {cut: r.cut != null ? r.cut : (prices.cut || 0), glue: r.glue != null ? r.glue : (prices.glue || 0)};
+}
+const myPrices = () => ratesFor(myId);
+// Цена фиксируется при ЗАКРЫТИИ смены: открытая считается по текущей ставке, закрытая — по сохранённой
+function shiftPrices(s){
+  return s.end ? {cut: s.priceCut || 0, glue: s.priceGlue || 0} : ratesFor(s.uid);
+}
+const ratesReady = () => pricesLoaded && ratesLoaded;
+// Всё, что пишется в смену при закрытии: время, объём, цены на этот момент и сумма
+async function closeBody(s){
+  const w = await loadShiftWork(s), pr = ratesFor(s.uid);
+  return {end: Date.now(), cutArea: Math.round(w.cut * 10000) / 10000, glueArea: Math.round(w.glue * 10000) / 10000,
+    priceCut: pr.cut, priceGlue: pr.glue, sum: Math.round((w.cut * pr.cut + w.glue * pr.glue) * 100) / 100};
 }
 // Закрытая смена считается по объёму, зафиксированному при закрытии (так оплата не меняется,
 // даже если объект потом удалят); открытая — по текущим отметкам
@@ -31,7 +44,7 @@ function shiftWorkOf(s){
   if (s.end) return {cut: s.cutArea || 0, glue: s.glueArea || 0};
   return shiftWork[s.id] || {cut: s.cutArea || 0, glue: s.glueArea || 0};
 }
-function shiftPay(s){ const w = shiftWorkOf(s); return w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
+function shiftPay(s){ const w = shiftWorkOf(s), p = shiftPrices(s); return w.cut * p.cut + w.glue * p.glue; }
 
 /* Объём работы смены считается по отметкам во всех объектах */
 const typesCache = {};
@@ -83,30 +96,30 @@ async function loadAllWork(){
 
 async function openShift(){
   if (myShift) return;
-  if (!amOwner && !pricesLoaded) { toast("Подождите, загружаю цены…"); return; }
-  const pr = myPrices();
   const ref = F.doc(F.collection(fs, "shifts"));
-  const body = {uid: myId, name: me.name, start: Date.now(), end: null, priceCut: pr.cut, priceGlue: pr.glue, bonus: 0, bonusNote: "", cutArea: 0, glueArea: 0, sum: 0};
+  // цены не пишем: они подставятся при закрытии смены
+  const body = {uid: myId, name: me.name, start: Date.now(), end: null, priceCut: null, priceGlue: null, bonus: 0, bonusNote: "", cutArea: 0, glueArea: 0, sum: 0};
   try { await F.setDoc(ref, body); toast("Смена открыта — можно работать"); }
-  catch(e) { toast(String(e.code).includes("permission") ? "Не удалось открыть смену. Возможно, владелец ещё не указал цены." : errMsg(e)); }
+  catch(e) { toast(errMsg(e)); }
 }
 async function closeShift(){
   const s = myShift; if (!s) return;
+  if (!ratesReady()) { toast("Подождите, загружаю цены…"); return; }
   try {
-    const w = await loadShiftWork(s);
-    const sum = Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100;
-    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea: Math.round(w.cut * 10000) / 10000, glueArea: Math.round(w.glue * 10000) / 10000, sum});
-    toast("Смена закрыта");
-  } catch(e) { toast(errMsg(e)); }
+    const b = await closeBody(s);
+    await F.updateDoc(F.doc(fs, "shifts/" + s.id), b);
+    toast(`Смена закрыта: ${money(b.sum + (s.bonus || 0))} ₽`);
+  } catch(e) { toast(String(e.code).includes("permission") ? "Не удалось закрыть: цена только что изменилась. Нажмите «Закрыть смену» ещё раз." : errMsg(e)); }
 }
 
 function shiftStats(s){
   const w = shiftWorkOf(s);
-  const pay = shiftPay(s), bonus = s.bonus || 0;
+  const pay = shiftPay(s), bonus = s.bonus || 0, p = shiftPrices(s);
   return el("div", {className: "srow", style: "border:0;padding:0"},
     el("div", {className: "pnums"},
-      el("span", {}, "Нарезка ", el("b", {textContent: `${m2(w.cut)} м²`}), ` × ${money(s.priceCut)} ₽`),
-      el("span", {}, "Оклейка ", el("b", {textContent: `${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
+      el("span", {}, "Нарезка ", el("b", {textContent: `${m2(w.cut)} м²`}), ` × ${money(p.cut)} ₽`),
+      el("span", {}, "Оклейка ", el("b", {textContent: `${m2(w.glue)} м²`}), ` × ${money(p.glue)} ₽`)),
+    s.end ? "" : el("div", {className: "empty", textContent: "Цена текущая — она зафиксируется в момент закрытия смены."}),
     el("div", {className: "pnums"},
       el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
       bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
@@ -122,7 +135,7 @@ function renderShift(){
   if (!myShift) {
     const pr = myPrices();
     card.append(el("h2", {textContent: "Смена закрыта"}),
-      el("div", {className: "empty", textContent: "Откройте смену перед началом работы. Все отметки нарезки и оклейки запишутся в неё, а при закрытии вы увидите время, объём и сумму."}),
+      el("div", {className: "empty", textContent: "Откройте смену перед началом работы. Все отметки нарезки и оклейки запишутся в неё. Оплата — за м² по цене, которая действует в момент закрытия смены."}),
       el("div", {className: "pnums"},
         el("span", {}, "Нарезка: ", el("b", {textContent: `${money(pr.cut)} ₽/м²`})),
         el("span", {}, "Оклейка: ", el("b", {textContent: `${money(pr.glue)} ₽/м²`}))));
@@ -161,14 +174,14 @@ function renderAdmin(){
   ps.onclick = async () => {
     const c = numOrNull(pc.value), g = numOrNull(pg.value);
     if (c == null || g == null || c < 0 || g < 0) { toast("Введите обе цены числом"); return; }
-    try { await F.setDoc(F.doc(fs, "settings/prices"), {cut: c, glue: g, updated: Date.now()}); toast("Цены сохранены. Они применятся к новым сменам."); } catch(e) { toast(errMsg(e)); }
+    try { await F.setDoc(F.doc(fs, "settings/prices"), {cut: c, glue: g, updated: Date.now()}); toast("Цены сохранены. Они применятся ко всем сменам, которые закроются после этого."); } catch(e) { toast(errMsg(e)); }
   };
   if (pricesLoaded && !(prices.cut > 0) && !(prices.glue > 0)) box.append(el("div", {className: "notice", textContent: "Стандартные цены ещё не указаны — сотрудники не смогут открыть смену. Укажите их ниже."}));
   box.append(el("div", {className: "card"}, el("h2", {textContent: "Стандартные цены за м²"}),
     el("div", {className: "grid2"},
       el("div", {}, el("label", {htmlFor: "prCut", textContent: "Нарезка, ₽/м²"}), pc),
       el("div", {}, el("label", {htmlFor: "prGlue", textContent: "Оклейка, ₽/м²"}), pg)),
-    el("div", {className: "empty", textContent: "Цена фиксируется в смене при её открытии: если поменять цену, старые смены останутся по старой."}), ps));
+    el("div", {className: "empty", textContent: "Цена фиксируется в смене при её закрытии. Открытые сейчас смены закроются уже по новой цене, а закрытые останутся по старой."}), ps));
 
   // сотрудники
   const uc = el("div", {className: "card"}, el("h2", {textContent: "Сотрудники"}));
@@ -209,7 +222,7 @@ function renderAdmin(){
     back.onclick = async () => { try { await F.deleteDoc(F.doc(fs, "rates/" + id)); toast("Теперь у сотрудника стандартные ставки"); } catch(e) { toast(errMsg(e)); } };
     const rs = el("button", {className: "sec", textContent: "Сохранить ставки"});
     // личные ставки лежат отдельно (rates/<id>): их видят только руководство и сам сотрудник
-    rs.onclick = async () => { try { await F.setDoc(F.doc(fs, "rates/" + id), {cut: numOrNull(rc.value), glue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); } catch(e) { toast(errMsg(e)); } };
+    rs.onclick = async () => { try { await F.setDoc(F.doc(fs, "rates/" + id), {cut: numOrNull(rc.value), glue: numOrNull(rg.value)}); toast("Ставки сохранены. Применятся к сменам, которые закроются после этого."); } catch(e) { toast(errMsg(e)); } };
     const del = el("button", {className: "link", textContent: "Удалить сотрудника"});
     del.onclick = () => confirmTap(del, async () => { try { await F.deleteDoc(ref); toast("Сотрудник удалён"); } catch(e) { toast(errMsg(e)); } });
     uc.append(el("div", {className: "member"},
@@ -258,8 +271,8 @@ function renderAdmin(){
     sc.append(el("div", {className: "scroll"}, tb));
     const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
     cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
-      const w = shiftWorkOf(s), pay = shiftPay(s);
-      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
+      const w = shiftWorkOf(s), pay = shiftPay(s), p = shiftPrices(s);
+      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(p.cut), m2(w.glue), money(p.glue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
     })).join("\n"), "Смены скопированы — вставьте в Excel");
     sc.append(cp);
   }
@@ -286,7 +299,8 @@ function renderAdmin(){
       el("div", {}, el("label", {htmlFor: bt.id, textContent: "Комментарий (за что)"}), bt));
     const act = el("div", {className: "row"}, bs);
     if (!s.end) { const cl = el("button", {className: "link", textContent: "Закрыть смену сейчас"}); cl.onclick = () => confirmTap(cl, async () => {
-      try { const w = await loadShiftWork(s); await F.updateDoc(ref, {end: Date.now(), cutArea: w.cut, glueArea: w.glue, sum: Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100}); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
+      if (!ratesReady()) { toast("Подождите, загружаю цены…"); return; }
+      try { await F.updateDoc(ref, await closeBody(s)); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
     const dl = el("button", {className: "link", textContent: "Удалить"}); dl.onclick = () => confirmTap(dl, async () => { try { await F.deleteDoc(ref); } catch(e) { toast(errMsg(e)); } });
     act.append(el("span", {className: "grow"}), dl);
     row.append(act); sc.append(row);

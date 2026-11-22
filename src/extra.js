@@ -155,8 +155,8 @@ async function downloadExcel(btn){
     const sh = [["Сотрудник", "Начало", "Конец", "Часы", "Нарезка, м²", "Цена нарезки, ₽/м²", "Оклейка, м²", "Цена оклейки, ₽/м²", "За работу, ₽", "Бонус/штраф, ₽", "Комментарий", "Итого, ₽"]];
     const tot = {};
     for (const s of ss) {
-      const w = shiftWorkOf(s), pay = shiftPay(s), hrs = ((s.end || Date.now()) - s.start) / 36e5, bonus = s.bonus || 0;
-      sh.push([s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", r2(hrs), r4(w.cut), s.priceCut, r4(w.glue), s.priceGlue, r2(pay), bonus, s.bonusNote || "", r2(pay + bonus)]);
+      const w = shiftWorkOf(s), pay = shiftPay(s), p = shiftPrices(s), hrs = ((s.end || Date.now()) - s.start) / 36e5, bonus = s.bonus || 0;
+      sh.push([s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", r2(hrs), r4(w.cut), p.cut, r4(w.glue), p.glue, r2(pay), bonus, s.bonusNote || "", r2(pay + bonus)]);
       const t = tot[s.uid] || (tot[s.uid] = {name: s.name, n: 0, h: 0, cut: 0, glue: 0, pay: 0, bonus: 0});
       t.n++; t.h += hrs; t.cut += w.cut; t.glue += w.glue; t.pay += pay; t.bonus += bonus;
     }

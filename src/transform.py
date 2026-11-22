@@ -131,7 +131,7 @@ const $ = id => document.getElementById(id);''')
 
 rep('''let user = null, myId = null, names = {};
 let amOwner = false, roles = {}, members = [], rolesLoaded = false;''','''let fs = null, auth = null, myId = null, names = {};
-let amOwner = false, ownerUid = null, me = null, usersMap = {}, rates = {}, prices = {cut: 0, glue: 0}, pricesLoaded = false;
+let amOwner = false, ownerUid = null, me = null, usersMap = {}, rates = {}, prices = {cut: 0, glue: 0}, pricesLoaded = false, ratesLoaded = false;
 let shifts = [], myShift = null, shiftWork = {};''')
 rep('''function allowed(area){
   if (!canWrite) return false;
