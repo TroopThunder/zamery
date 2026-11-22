@@ -105,8 +105,8 @@ function startData(){
   startedAsManager = isManager();
   const sq = startedAsManager ? F.collection(fs, "shifts") : F.query(F.collection(fs, "shifts"), F.where("uid", "==", myId));
   // личные ставки: руководство видит все, сотрудник — только свою
-  if (startedAsManager) gsubs.push(F.onSnapshot(F.collection(fs, "rates"), q => { rates = {}; q.forEach(d => rates[d.id] = d.data()); ratesLoaded = true; render(); }, () => { ratesLoaded = true; }));
-  else gsubs.push(F.onSnapshot(F.doc(fs, "rates/" + myId), d => { rates = d.exists() ? {[myId]: d.data()} : {}; ratesLoaded = true; render(); }, () => { ratesLoaded = true; }));
+  if (startedAsManager) gsubs.push(F.onSnapshot(F.collection(fs, "rates"), q => { rates = {}; q.forEach(d => rates[d.id] = d.data()); render(); }, () => {}));
+  else gsubs.push(F.onSnapshot(F.doc(fs, "rates/" + myId), d => { rates = d.exists() ? {[myId]: d.data()} : {}; render(); }, () => {}));
   gsubs.push(F.onSnapshot(sq, q => {
     shifts = q.docs.map(d => ({id: d.id, ...d.data()}));
     const was = myShift && myShift.id;

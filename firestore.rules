@@ -76,23 +76,19 @@ service cloud.firestore {
       }
     }
 
-    // Смены: сотрудник видит и закрывает только свои.
-    // Цена фиксируется при ЗАКРЫТИИ: подставить свою нельзя — она сверяется с действующей ставкой здесь
+    // Смены: сотрудник видит и закрывает только свои; цену подставить нельзя — она проверяется здесь
     match /shifts/{sid} {
       allow read: if isManager() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if approved()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.end == null
         && request.resource.data.bonus == 0
-        && (request.resource.data.get('priceCut', null) == null || request.resource.data.priceCut == expPrice('cut'))
-        && (request.resource.data.get('priceGlue', null) == null || request.resource.data.priceGlue == expPrice('glue'));
+        && request.resource.data.priceCut == expPrice('cut')
+        && request.resource.data.priceGlue == expPrice('glue');
       allow update: if isManager() || (signedIn()
         && resource.data.uid == request.auth.uid
         && resource.data.end == null
-        && request.resource.data.end is number
-        && request.resource.data.priceCut == expPrice('cut')
-        && request.resource.data.priceGlue == expPrice('glue')
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum', 'priceCut', 'priceGlue']));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum']));
       allow delete: if isManager();
     }
   }
