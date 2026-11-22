@@ -193,6 +193,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
         <div class="grow"><label for="inH">Высота, см</label><input id="inH" inputmode="decimal" autocomplete="off" style="width:100%"></div>
         <button id="addSize">Добавить</button>
       </div>
+      <div class="empty" id="codeHint"></div>
       <div id="matchBox" class="hidden"></div>
 
       <div class="row">
@@ -253,9 +254,43 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 <script>
 const $ = id => document.getElementById(id);
-const LETTER = "А";                     // русская А
 const TOL = 0.5;                        // допуск 5 мм = 0,5 см
-const code = n => LETTER + n;
+/* ---------- коды окон: буква этажа + номер (1 эт. A1, A2…; 2 эт. B1…) ----------
+   Код даётся один раз — по этажу, где размер записали впервые, и потом не меняется.
+   Такое же окно на другом этаже получает тот же код (A1 на 1-м и на 2-м этаже). */
+const LAT = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function floorLetter(f){
+  const s = String(f ?? "").trim(), n = Number(s);
+  if (Number.isInteger(n) && n >= 1 && n <= 26) return LAT[n - 1];
+  const ch = s.charAt(0).toUpperCase();            // «Подвал» → П, «Мансарда» → М
+  return /\p{L}/u.test(ch) ? ch : "X";
+}
+// Старые окна (записанные до буквенных кодов) получают код по самому нижнему этажу, где они стоят
+function legacyMap(ts, rs){
+  const map = {}, maxI = {};
+  for (const t of Object.values(ts)) if (t.L && t.i) maxI[t.L] = Math.max(maxI[t.L] || 0, t.i);
+  for (const t of Object.values(ts).filter(t => !(t.L && t.i)).sort((a, b) => a.num - b.num)) {
+    const fl = rs.filter(r => (r.items || {})[t.num] > 0).map(r => String(r.floor)).sort(byNum);
+    const L = floorLetter(fl.length ? fl[0] : "1");
+    maxI[L] = (maxI[L] || 0) + 1;
+    map[t.num] = {L, i: maxI[L]};
+  }
+  return map;
+}
+let legacy = {};
+function codeParts(n, ts = types, lg = legacy){
+  const t = ts[n];
+  if (t && t.L && t.i) return {L: t.L, i: t.i};
+  return lg[n] || {L: "?", i: Number(n) || 0};
+}
+const code = (n, ts, lg) => { const p = codeParts(n, ts, lg); return p.L + p.i; };
+const byCode = (a, b) => { const x = codeParts(a), y = codeParts(b); return x.L.localeCompare(y.L) || x.i - y.i; };
+const byType = (a, b) => byCode(a.num, b.num);
+function nextIndex(L){
+  let m = 0;
+  for (const t of Object.values(types)) { const p = codeParts(t.num); if (p.L === L) m = Math.max(m, p.i); }
+  return m + 1;
+}
 const num = s => parseFloat(String(s).trim().replace(",", "."));
 const cm = x => String(Math.round(x * 10) / 10).replace(".", ",");
 const m2 = x => (Math.round(x * 10000) / 10000).toLocaleString("ru-RU", {maximumFractionDigits: 4});
@@ -334,7 +369,7 @@ function openObject(id){
   const done = () => { if (typesLoaded && roomsLoaded) { clearTimeout(timer); status(""); } };
   unsubs.push(db.collection(objPath() + "/types").onSnapshot(s => {
     types = {};
-    for (const d of s.docs) { const v = d.data(); if (v && v.num) types[v.num] = {num: v.num, w: v.w, h: v.h}; }
+    for (const d of s.docs) { const v = d.data(); if (v && v.num) types[v.num] = {num: v.num, w: v.w, h: v.h, L: v.L, i: v.i}; }
     if (!s.metadata.fromCache) { typesLoaded = true; done(); }
     render();
   }, e => { clearTimeout(timer); status("Не удалось загрузить окна объекта."); }));
@@ -431,7 +466,7 @@ function stats3(need, made, kind){
 function renderProgress(kind, c){
   const box = $("tab-" + kind); box.innerHTML = "";
   const done = doneBy(kind), cutDone = doneBy("cut");
-  const tlist = Object.values(types).filter(t => c[t.num] || done[t.num]).sort((a, b) => a.num - b.num);
+  const tlist = Object.values(types).filter(t => c[t.num] || done[t.num]).sort(byType);
   const need = tlist.reduce((s, t) => s + (c[t.num] || 0), 0);
   const made = tlist.reduce((s, t) => s + Math.min(done[t.num] || 0, c[t.num] || 0), 0);
   const doneArea = tlist.reduce((s, t) => s + Math.min(done[t.num] || 0, c[t.num] || 0) * t.w * t.h / 10000, 0);
@@ -464,7 +499,7 @@ function renderProgress(kind, c){
 function renderProgressAll(kind, c, box, tlist, done, cutDone){
   // готовые окна — в конец списка
   const isDone = t => (c[t.num] || 0) - (done[t.num] || 0) <= 0;
-  tlist = [...tlist].sort((a, b) => (isDone(a) - isDone(b)) || a.num - b.num);
+  tlist = [...tlist].sort((a, b) => (isDone(a) - isDone(b)) || byType(a, b));
   const list = el("div", {className: "card"}, el("h2", {textContent: "По окнам"}));
   if (kind === "glue") list.append(el("div", {className: "empty", textContent: "«Можно клеить» — сколько уже нарезано, но ещё не наклеено."}));
   if (!tlist.length) list.append(el("div", {className: "empty", textContent: "Сначала запишите окна на вкладке «Замер»."}));
@@ -543,7 +578,7 @@ function renderProgressRooms(kind, box){
       b.append(el("div", {className: "legend"},
         el("span", {className: "tag ready", textContent: `Можно клеить: ${total}`}),
         el("span", {className: "tag wait", textContent: `Ждут нарезки: ${g.wait}`})));
-      const list = Object.keys(g.ready).filter(k => g.ready[k] > 0).sort(byNum).map(k => `${code(k)} × ${g.ready[k]}`).join(", ");
+      const list = Object.keys(g.ready).filter(k => g.ready[k] > 0).sort(byCode).map(k => `${code(k)} × ${g.ready[k]}`).join(", ");
       if (list) b.append(el("div", {className: "code", style: "font-size:13px;line-height:1.5;color:var(--accent)", textContent: list}));
     }
     if (f === progFloor[kind]) b.style.boxShadow = "inset 3px 0 0 var(--accent)", b.style.paddingLeft = "10px";
@@ -632,6 +667,14 @@ function renderProgressRooms(kind, box){
   }
 }
 
+let pinned = null;
+function pinLegacy(){
+  if (!db || !typesLoaded || !roomsLoaded || pinned === curObj) return;
+  if (!(typeof canEditTypes === "function" ? canEditTypes() : amOwner)) return;
+  pinned = curObj;
+  for (const [n, p] of Object.entries(legacy)) db.doc(objPath() + "/types/n" + n).update({L: p.L, i: p.i}).catch(() => {});
+}
+
 /* ---------- новый вид окна: номер по порядку, без повторов ---------- */
 async function createType(w, h){
   let n = Math.max(0, ...Object.keys(types).map(Number)) + 1;
@@ -712,6 +755,8 @@ function render(){
   }
 }
 function renderAll(){
+  legacy = legacyMap(types, rooms);
+  pinLegacy();
   // объекты
   const sel = $("objSelect");
   sel.innerHTML = "";
@@ -754,7 +799,7 @@ function renderAll(){
   $("roomDel").classList.toggle("hidden", !r || !allowed("measure"));
   const ri = $("roomItems"); ri.innerHTML = "";
   if (r) {
-    const nums = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byNum);
+    const nums = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byCode);
     if (!nums.length) ri.append(el("div", {className: "empty", textContent: "В кабинете пока нет окон. Введите размер или нажмите на окно из списка ниже."}));
     for (const n of nums) {
       const t = types[n];
@@ -767,6 +812,7 @@ function renderAll(){
     }
   }
   for (const id of ["inW", "inH", "addSize"]) $(id).disabled = !r || !allowed("measure");
+  $("codeHint").textContent = r ? `Новые размеры на этом этаже получат коды ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor))}, ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor)) + 1}… Уже записанный размер (с любого этажа, разница до 5 мм) — тот же код.` : "";
 
   // копирование
   const cf = $("copyFrom"); const prev = cf.value; cf.innerHTML = "";
@@ -777,7 +823,7 @@ function renderAll(){
   // кнопки видов окон
   const tb = $("typeButtons"); tb.innerHTML = "";
   const c = counts();
-  const tlist = Object.values(types).sort((a, b) => a.num - b.num);
+  const tlist = Object.values(types).sort(byType);
   $("typesHint").textContent = tlist.length ? "Нажмите на окно, чтобы добавить его в выбранный кабинет." : "Здесь появятся окна, когда вы введёте первый размер.";
   for (const t of tlist) {
     const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
@@ -844,7 +890,7 @@ function whereList(n){
 let editingType = null;
 function renderTypes(c){
   const body = $("typesBody"); body.innerHTML = "";
-  const tlist = Object.values(types).sort((a, b) => a.num - b.num);
+  const tlist = Object.values(types).sort(byType);
   if (!tlist.length) { body.append(el("div", {className: "empty", textContent: "Окон пока нет."})); return; }
   for (const t of tlist) {
     const q = c[t.num] || 0, area = t.w * t.h / 10000;
@@ -860,7 +906,7 @@ function renderTypes(c){
         ok.onclick = async () => {
           const nw = num(w.value), nh = num(h.value);
           if (!(nw > 0 && nh > 0)) { toast("Введите размеры в см"); return; }
-          try { await db.doc(objPath() + "/types/n" + t.num).set({num: t.num, w: nw, h: nh, created: Date.now()}); editingType = null; toast(`${code(t.num)}: размер изменён на ${cm(nw)}×${cm(nh)}`); render(); }
+          try { await db.doc(objPath() + "/types/n" + t.num).set({num: t.num, w: nw, h: nh, ...codeParts(t.num), created: Date.now()}); editingType = null; toast(`${code(t.num)}: размер изменён на ${cm(nw)}×${cm(nh)}`); render(); }
           catch(e) { toast(errMsg(e)); }
         };
         const cancel = el("button", {className: "sec", textContent: "Отмена"}); cancel.onclick = () => { editingType = null; render(); };
@@ -899,7 +945,7 @@ function renderSummary(c){
     if (!fr.length) { box.append(el("div", {className: "empty", textContent: "Кабинетов нет."})); continue; }
     const tbl = el("table");
     for (const r of fr) {
-      const list = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byNum).map(n => `${code(n)}×${r.items[n]}`).join(", ") || "—";
+      const list = Object.keys(r.items).filter(n => r.items[n] > 0).sort(byCode).map(n => `${code(n)}×${r.items[n]}`).join(", ") || "—";
       tbl.append(el("tr", {}, el("td", {textContent: r.name, style: "width:30%"}), el("td", {className: "code", style: "font-size:13px;line-height:1.5", textContent: list})));
     }
     box.append(el("div", {className: "scroll"}, tbl));
@@ -973,7 +1019,7 @@ $("copyTable").onclick = () => {
 $("copyCodes").onclick = () => {
   const c = counts();
   const cd = doneBy("cut"), gd = doneBy("glue");
-  const lines = ["Код\tРазмер, см\tНужно\tНарезано\tНаклеено"].concat(Object.keys(c).sort(byNum).map(n => { const t = types[n] || {}; return `${code(n)}\t${cm(t.w || 0)}×${cm(t.h || 0)}\t${c[n]}\t${cd[n] || 0}\t${gd[n] || 0}`; }));
+  const lines = ["Код\tРазмер, см\tНужно\tНарезано\tНаклеено"].concat(Object.keys(c).sort(byCode).map(n => { const t = types[n] || {}; return `${code(n)}\t${cm(t.w || 0)}×${cm(t.h || 0)}\t${c[n]}\t${cd[n] || 0}\t${gd[n] || 0}`; }));
   copyText(lines.join("\n"), "Итог по кодам скопирован");
 };
 

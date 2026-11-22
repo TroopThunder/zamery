@@ -202,18 +202,26 @@ rep('''async function resolveNames(){
 # createType via transaction
 i=s.index('async function createType(w, h){'); j=s.index('function addToRoom(')
 s=s[:i]+'''async function createType(w, h){
-  let n = Math.max(0, ...Object.keys(types).map(Number)) + 1;
-  for (let tries = 0; tries < 20; tries++, n++) {
-    const ref = F.doc(fs, objPath() + "/types/n" + n);
-    const body = {num: n, w, h, created: Date.now()};
+  // буква — по этажу текущего кабинета; номер — следующий свободный для этой буквы.
+  // «Бронь» кода (types/c_B3) не даёт двум замерщикам одновременно взять один и тот же код.
+  const L = floorLetter((room() || {}).floor ?? curFloor ?? "1");
+  let n = Math.max(0, ...Object.keys(types).map(Number)) + 1, i = nextIndex(L);
+  for (let tries = 0; tries < 30; tries++) {
+    const ref = F.doc(fs, objPath() + "/types/n" + n), claim = F.doc(fs, objPath() + "/types/c_" + L + i);
+    const body = {num: n, w, h, L, i, created: Date.now()};
     try {
-      const ok = await F.runTransaction(fs, async tx => { const d = await tx.get(ref); if (d.exists()) return false; tx.set(ref, body); return true; });
-      if (!ok) continue;
+      const r = await F.runTransaction(fs, async tx => {
+        const d = await tx.get(ref), c = await tx.get(claim);
+        if (d.exists()) return "n"; if (c.exists()) return "i";
+        tx.set(claim, {code: L + i, n}); tx.set(ref, body); return "ok";
+      });
+      if (r === "n") { n++; continue; }
+      if (r === "i") { i++; continue; }
     } catch(e) {
       if (String(e && e.code).includes("permission")) throw e;
       F.setDoc(ref, body).catch(() => {});   // нет связи: запишется, когда появится интернет
     }
-    types[n] = {num: n, w, h};
+    types[n] = {num: n, w, h, L, i};
     return n;
   }
   throw {code: "unavailable"};

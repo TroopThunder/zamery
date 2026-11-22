@@ -137,16 +137,17 @@ async function downloadExcel(btn){
         .sort((a, b) => byNum(String(a.floor), String(b.floor)) || byNum(String(a.name), String(b.name)));
       const lg = (await F.getDocs(F.collection(fs, `objects/${o.id}/log`))).docs.map(d => d.data());
       const need = {}, cut = {}, glue = {};
-      for (const r of rs) for (const k of Object.keys(r.items || {}).sort(byNum)) {
+      const lc = legacyMap(t, rs), cd = k => code(k, t, lc), bc = (a, b) => { const x = codeParts(a, t, lc), y = codeParts(b, t, lc); return x.L.localeCompare(y.L) || x.i - y.i; };
+      for (const r of rs) for (const k of Object.keys(r.items || {}).sort(bc)) {
         const q = r.items[k]; if (!(q > 0)) continue;
         const tp = t[k] || {w: 0, h: 0};
-        zam.push([o.name, r.floor, r.name, code(k), tp.w, tp.h, q, r4(tp.w * tp.h / 10000 * q)]);
+        zam.push([o.name, r.floor, r.name, cd(k), tp.w, tp.h, q, r4(tp.w * tp.h / 10000 * q)]);
         need[k] = (need[k] || 0) + q;
       }
       for (const x of lg) { const d = x.kind === "cut" ? cut : x.kind === "glue" ? glue : null; if (d) d[x.num] = (d[x.num] || 0) + x.q; }
-      for (const tp of Object.values(t).sort((a, b) => a.num - b.num)) {
+      for (const tp of Object.values(t).sort((a, b) => bc(a.num, b.num))) {
         const a = tp.w * tp.h / 10000, n = need[tp.num] || 0;
-        win.push([o.name, code(tp.num), tp.w, tp.h, r4(a), n, r4(a * n), cut[tp.num] || 0, glue[tp.num] || 0]);
+        win.push([o.name, cd(tp.num), tp.w, tp.h, r4(a), n, r4(a * n), cut[tp.num] || 0, glue[tp.num] || 0]);
       }
     }
     const from = adminPeriod === "all" ? 0 : (adminPeriod === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(adminPeriod) * 864e5);
