@@ -51,7 +51,9 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && !('rateCut' in request.resource.data) && !('rateGlue' in request.resource.data);
-      allow update, delete: if isManager();
+      // профиль владельца может менять только сам владелец; удалить его нельзя никому
+      allow update: if isManager() && (uid != get(ownerDoc()).data.uid || isOwner());
+      allow delete: if isManager() && uid != get(ownerDoc()).data.uid;
     }
 
     // Личные настройки внешнего вида (тема, цвет, стекло): каждый видит и меняет только свои

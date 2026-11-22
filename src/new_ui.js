@@ -187,18 +187,21 @@ function renderAdmin(){
   const uc = el("div", {className: "card"}, el("h2", {textContent: "Сотрудники"}));
   const list = Object.entries(usersMap).filter(([id]) => id !== myId && id !== ownerUid)
     .sort((a, b) => (!!a[1].approved - !!b[1].approved) || String(a[1].name).localeCompare(String(b[1].name), "ru"));
+  // владелец всегда первый в списке: его видно, но удалить или ограничить нельзя
+  if (ownerUid) list.unshift([ownerUid, usersMap[ownerUid] || {name: "Владелец", approved: true}]);
   if (!list.length) uc.append(el("div", {className: "empty", textContent: "Пока никто не зарегистрировался. Отправьте сотрудникам ссылку на сайт — они зарегистрируются и появятся здесь."}));
   // выбор одного сотрудника из списка; ожидающие доступа — вверху списка
   if (list.length) {
     if (!list.some(([id]) => id === adminUser)) adminUser = list[0][0];
-    const pend = list.filter(([, u]) => !u.approved).length;
+    const pend = list.filter(([id, u]) => id !== ownerUid && !u.approved).length;
     const sel = el("select", {id: "admUserSel"});
-    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (u.approved ? "" : " — ждёт доступа")}));
+    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (id === ownerUid ? " ★ владелец" : u.approved ? "" : " — ждёт доступа")}));
     sel.value = adminUser;
     sel.onchange = () => { adminUser = sel.value; render(); };
     uc.append(el("label", {htmlFor: "admUserSel", textContent: `Выберите сотрудника (всего ${list.length}${pend ? `, ждут доступа: ${pend}` : ""})`}), sel);
   }
   for (const [id, u] of list.filter(([id]) => id === adminUser)) {
+    const isOwn = id === ownerUid;
     const ref = F.doc(fs, "users/" + id);
     const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
     const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
@@ -225,17 +228,21 @@ function renderAdmin(){
     rs.onclick = async () => { try { await F.setDoc(F.doc(fs, "rates/" + id), {cut: numOrNull(rc.value), glue: numOrNull(rg.value)}); toast("Ставки сохранены для новых смен"); } catch(e) { toast(errMsg(e)); } };
     const del = el("button", {className: "link", textContent: "Удалить сотрудника"});
     del.onclick = () => confirmTap(del, async () => { try { await F.deleteDoc(ref); toast("Сотрудник удалён"); } catch(e) { toast(errMsg(e)); } });
+    // у владельца вместо галочек — пояснение; кнопки удаления нет
+    const rights = isOwn
+      ? [el("div", {className: "notice", textContent: "Владелец — все права автоматически: Замер, Нарезка, Оклейка и Управление. Удалить владельца или ограничить его права нельзя."})]
+      : [el("div", {className: "chips"}, el("label", {htmlFor: ap.id}, ap, "Доступ разрешён")),
+         el("div", {className: "empty", textContent: "Что может изменять («Управление» — доступ к этому разделу: сотрудники, цены, смены, оплата):"}), chips];
     uc.append(el("div", {className: "member"},
-      el("div", {className: "row"}, el("b", {className: "grow", textContent: u.name || "Без имени"}),
-        el("span", {className: "pill" + (u.approved ? " ok" : ""), textContent: u.approved ? "работает" : "ждёт доступа"})),
-      el("div", {className: "chips"}, el("label", {htmlFor: ap.id}, ap, "Доступ разрешён")),
-      el("div", {className: "empty", textContent: "Что может изменять («Управление» — доступ к этому разделу: сотрудники, цены, смены, оплата):"}), chips,
+      el("div", {className: "row"}, el("b", {className: "grow", textContent: (u.name || "Без имени") + (id === myId ? " (вы)" : "")}),
+        el("span", {className: "pill" + (isOwn || u.approved ? " ok" : ""), textContent: isOwn ? "★ владелец" : u.approved ? "работает" : "ждёт доступа"})),
+      ...rights,
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
         el("div", {}, el("label", {htmlFor: rg.id, textContent: "Своя ставка: оклейка"}), rg)),
       effLine,
       el("div", {className: "empty", textContent: "Оставьте поле пустым — будет стандартная цена. Заполняйте, только если этому человеку нужна другая ставка."}),
-      el("div", {className: "row"}, rs, back, el("span", {className: "grow"}), del)));
+      el("div", {className: "row"}, rs, back, el("span", {className: "grow"}), ...(isOwn ? [] : [del]))));
   }
   uc.append(el("div", {className: "empty", textContent: "Забыл пароль: удалите сотрудника здесь и в консоли Firebase (Authentication → Users → его строка → Delete account). После этого он сможет зарегистрироваться заново с тем же именем."}));
   box.append(uc);
