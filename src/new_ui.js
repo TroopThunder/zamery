@@ -195,7 +195,7 @@ function renderAdmin(){
     if (!list.some(([id]) => id === adminUser)) adminUser = list[0][0];
     const pend = list.filter(([id, u]) => id !== ownerUid && !u.approved).length;
     const sel = el("select", {id: "admUserSel"});
-    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (id === ownerUid ? " ★ владелец" : u.approved ? "" : " — ждёт доступа")}));
+    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (id === ownerUid ? " ★" : u.approved ? "" : " — ждёт доступа")}));
     sel.value = adminUser;
     sel.onchange = () => { adminUser = sel.value; render(); };
     uc.append(el("label", {htmlFor: "admUserSel", textContent: `Выберите сотрудника (всего ${list.length}${pend ? `, ждут доступа: ${pend}` : ""})`}), sel);
@@ -230,12 +230,12 @@ function renderAdmin(){
     del.onclick = () => confirmTap(del, async () => { try { await F.deleteDoc(ref); toast("Сотрудник удалён"); } catch(e) { toast(errMsg(e)); } });
     // у владельца вместо галочек — пояснение; кнопки удаления нет
     const rights = isOwn
-      ? [el("div", {className: "notice", textContent: "Владелец — все права автоматически: Замер, Нарезка, Оклейка и Управление. Удалить владельца или ограничить его права нельзя."})]
+      ? [el("div", {className: "notice", textContent: "Владелец — все права автоматически"})]
       : [el("div", {className: "chips"}, el("label", {htmlFor: ap.id}, ap, "Доступ разрешён")),
          el("div", {className: "empty", textContent: "Что может изменять («Управление» — доступ к этому разделу: сотрудники, цены, смены, оплата):"}), chips];
     uc.append(el("div", {className: "member"},
       el("div", {className: "row"}, el("b", {className: "grow", textContent: (u.name || "Без имени") + (id === myId ? " (вы)" : "")}),
-        el("span", {className: "pill" + (isOwn || u.approved ? " ok" : ""), textContent: isOwn ? "★ владелец" : u.approved ? "работает" : "ждёт доступа"})),
+        el("span", {className: "pill" + (isOwn || u.approved ? " ok" : ""), textContent: isOwn ? "★" : u.approved ? "работает" : "ждёт доступа"})),
       ...rights,
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
