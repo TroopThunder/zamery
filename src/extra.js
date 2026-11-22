@@ -14,6 +14,8 @@ function afterRender(){
   $("roomRename").classList.toggle("hidden", !m || !room());
   $("objRename").classList.toggle("hidden", !m || !curObj);
   $("floorTools").classList.toggle("hidden", !m || curFloor === null);
+  // удалять кабинеты может только руководство (так же проверяет база)
+  $("roomDel").classList.toggle("hidden", !room() || !isManager());
   renderRoomSearch();
   // заработок за текущую смену прямо во вкладках нарезки и оклейки
   if (myShift) for (const kind of ["cut", "glue"]) $("tab-" + kind).prepend(shiftBanner());

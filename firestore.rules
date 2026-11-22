@@ -24,6 +24,18 @@ service cloud.firestore {
       return r != null ? r : priceDoc().get(k, 0);
     }
 
+    // Смена принадлежит тому, кто делает запрос
+    function ownShift(sid) {
+      let p = /databases/$(database)/documents/shifts/$(sid);
+      return sid is string && exists(p) && get(p).data.uid == request.auth.uid;
+    }
+    // Сумма смены должна совпадать с «площадь × цена» (допуск 1 ₽ на округление)
+    function sumMatches(d) {
+      return d.cutArea is number && d.glueArea is number && d.sum is number
+        && d.cutArea >= 0 && d.glueArea >= 0
+        && math.abs(d.sum - (d.cutArea * d.priceCut + d.glueArea * d.priceGlue)) <= 1;
+    }
+
     // Кто владелец. Записать можно один раз — первому зарегистрированному.
     match /config/owner {
       allow read: if signedIn();
@@ -60,21 +72,32 @@ service cloud.firestore {
     }
 
     // Объекты, окна, кабинеты — пишет только тот, у кого есть право «Замер»
+    // Удалять объекты и кабинеты может только руководство
     match /objects/{oid} {
       allow read: if approved();
-      allow write: if hasRole('measure');
+      allow create, update: if hasRole('measure');
+      allow delete: if isManager();
       // окна: замерщик только добавляет новые, менять и удалять размеры может руководство
       match /types/{t} { allow read: if approved(); allow create: if hasRole('measure'); allow update, delete: if isManager(); }
-      match /rooms/{r} { allow read: if approved(); allow write: if hasRole('measure'); }
-      // Отметки нарезки и оклейки: только своим именем и только с нужным правом; изменить нельзя
+      match /rooms/{r} {
+        allow read: if approved();
+        allow create, update: if hasRole('measure');
+        allow delete: if isManager();
+      }
+      // Отметки нарезки и оклейки: только своим именем, только с нужным правом,
+      // разумное количество и только в свою смену; изменить нельзя
       match /log/{l} {
         allow read: if approved();
         allow create: if request.resource.data.kind in ['cut', 'glue']
           && hasRole(request.resource.data.kind)
-          && request.resource.data.by == request.auth.uid;
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.q is int
+          && request.resource.data.q >= -500 && request.resource.data.q <= 500
+          && (!('shift' in request.resource.data) || ownShift(request.resource.data.shift));
         allow delete: if isManager();
       }
     }
+
 
     // Смены: сотрудник видит и закрывает только свои; цену подставить нельзя — она проверяется здесь
     match /shifts/{sid} {
@@ -88,7 +111,9 @@ service cloud.firestore {
       allow update: if isManager() || (signedIn()
         && resource.data.uid == request.auth.uid
         && resource.data.end == null
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum']));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum'])
+        && request.resource.data.end is number
+        && sumMatches(request.resource.data));
       allow delete: if isManager();
     }
   }

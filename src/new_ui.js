@@ -61,6 +61,19 @@ function scheduleShiftWork(delay = 1500){
 }
 // Для владельца: все отметки всех объектов, сгруппированные по сменам
 let allWorkBusy = false;
+const logWork = {};   // объём по отметкам — для сверки с тем, что записано в закрытой смене
+// Сверка закрытой смены: площадь совпадает с отметками, а сумма — с «площадь × цена»
+function shiftMismatch(s){
+  if (!s.end) return "";
+  const p = [], w = logWork[s.id];
+  if (w) {
+    if (Math.abs((s.cutArea || 0) - w.cut) > 0.01) p.push(`нарезка ${m2(s.cutArea || 0)} м², по отметкам ${m2(w.cut)} м²`);
+    if (Math.abs((s.glueArea || 0) - w.glue) > 0.01) p.push(`оклейка ${m2(s.glueArea || 0)} м², по отметкам ${m2(w.glue)} м²`);
+  }
+  const calc = (s.cutArea || 0) * (s.priceCut || 0) + (s.glueArea || 0) * (s.priceGlue || 0);
+  if (Math.abs((s.sum || 0) - calc) > 1) p.push(`записанная сумма ${money(s.sum)} ₽, по расчёту ${money(calc)} ₽`);
+  return p.length ? "⚠ Не сходится: " + p.join("; ") + ". Проверьте смену (расхождение бывает и честным — если после закрытия удалили объект или поправили размеры окон)." : "";
+}
 async function loadAllWork(){
   if (!isManager() || allWorkBusy) return;
   allWorkBusy = true;
@@ -75,7 +88,7 @@ async function loadAllWork(){
       });
     }
     for (const id of Object.keys(acc)) acc[id] = {cut: Math.max(0, acc[id].cut), glue: Math.max(0, acc[id].glue)};
-    for (const s of shifts) shiftWork[s.id] = acc[s.id] || {cut: 0, glue: 0};
+    for (const s of shifts) shiftWork[s.id] = logWork[s.id] = acc[s.id] || {cut: 0, glue: 0};
     render();
   } catch(e) { toast("Не удалось загрузить объёмы работ: " + errMsg(e)); }
   allWorkBusy = false;
@@ -280,6 +293,7 @@ function renderAdmin(){
       el("div", {className: "row"}, el("b", {textContent: s.name || "—"}), el("span", {className: "size", textContent: `${dateTime(s.start)} → ${s.end ? dateTime(s.end) : "идёт"}`}), el("span", {className: "grow"}),
         el("span", {className: "pill" + (s.end ? "" : " ok"), textContent: s.end ? dur(s.end - s.start) : "открыта"})),
       shiftStats(s),
+      shiftMismatch(s) ? el("div", {className: "empty", style: "color:var(--warn);font-weight:600", textContent: shiftMismatch(s)}) : "",
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: bk.id, textContent: "Бонус или штраф"}), bk),
         el("div", {}, el("label", {htmlFor: bn.id, textContent: "Сумма, ₽"}), bn)),
