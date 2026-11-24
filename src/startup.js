@@ -27,64 +27,230 @@ async function nameToEmail(name){
   const h = (window.crypto && crypto.subtle) ? new Uint8Array(await crypto.subtle.digest("SHA-256", data)) : sha256Bytes(data);
   return "u" + [...h.slice(0, 16)].map(b => b.toString(16).padStart(2, "0")).join("") + "@zamery.app";
 }
-function authError(e){
+const isLegacyEmail = email => /@zamery\.app$/i.test(email || "");
+const isRealEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !isLegacyEmail(email);
+function authError(e, action){
   const c = String(e && e.code || "");
-  if (c.includes("email-already-in-use")) return "Это имя уже занято. Войдите или добавьте к имени фамилию.";
-  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found") || c.includes("invalid-login")) return "Неверное имя или пароль.";
+  if (c.includes("email-already-in-use")) return "Этот email уже используется. Введите другой адрес или войдите.";
+  if (c.includes("invalid-email")) return "Проверьте адрес почты.";
+  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found") || c.includes("invalid-login")) {
+    return action === "link" ? "Неверный текущий пароль." : "Неверное имя, email или пароль.";
+  }
   if (c.includes("weak-password")) return "Пароль должен быть не короче 6 символов.";
   if (c.includes("network")) return "Нет интернета. Проверьте связь и повторите.";
   if (c.includes("too-many-requests")) return "Слишком много попыток. Подождите пару минут.";
   if (c.includes("operation-not-allowed")) return "Вход по паролю не включён в Firebase (Authentication → Sign-in method → Email/Password).";
-  return "Не получилось: " + (c || (e && e.message) || "неизвестная ошибка");
+  return "Не удалось выполнить действие. Повторите попытку.";
 }
+// Для временной остановки регистрации и привязки выключите флаг и пересоберите сайт.
+const emailEnrollmentEnabled = true;
 let authMode = "login";
+let registrationDraft;
+const registrationKey = "glixpro-email-registration";
+try { registrationDraft = JSON.parse(sessionStorage.getItem(registrationKey)); } catch(e) {}
+function saveRegistrationDraft(draft){
+  registrationDraft = draft;
+  try {
+    if (draft) sessionStorage.setItem(registrationKey, JSON.stringify(draft));
+    else sessionStorage.removeItem(registrationKey);
+  } catch(e) {}
+}
 function setAuthMode(m){
+  if (m === "reg" && !emailEnrollmentEnabled) m = "login";
+  const reset = m === "reset", reg = m === "reg";
   authMode = m;
   $("aLogin").setAttribute("aria-selected", m === "login"); $("aReg").setAttribute("aria-selected", m === "reg");
-  $("authTitle").textContent = m === "login" ? "Вход" : "Регистрация";
-  $("aGo").textContent = m === "login" ? "Войти" : "Зарегистрироваться";
-  $("aPass2Wrap").classList.toggle("hidden", m !== "reg");
-  $("aPass").autocomplete = m === "login" ? "current-password" : "new-password";
-  $("aHint").textContent = m === "login" ? "Нет аккаунта? Откройте «Регистрация». После регистрации владелец выдаст вам доступ." : "Придумайте пароль не короче 6 символов и запомните его. Почта не нужна.";
+  $("authTitle").textContent = reset ? "Восстановление пароля" : reg ? "Регистрация" : "Вход";
+  $("aGo").textContent = reset ? "Отправить ссылку" : reg ? "Зарегистрироваться" : "Войти";
+  $("aNameLabel").textContent = reset ? "Привязанный email" : reg ? "Имя и фамилия" : "Имя и фамилия или email";
+  $("aName").type = reset ? "email" : "text";
+  $("aName").autocomplete = reset ? "email" : reg ? "name" : "username";
+  $("aName").placeholder = reset ? "ivan@example.com" : reg ? "Например, Иван Петров" : "";
+  $("aTabs").classList.toggle("hidden", reset || !emailEnrollmentEnabled);
+  $("aEmailWrap").classList.toggle("hidden", !reg);
+  $("aPassWrap").classList.toggle("hidden", reset);
+  $("aPass2Wrap").classList.toggle("hidden", !reg);
+  $("aReset").classList.toggle("hidden", m !== "login");
+  $("aBack").classList.toggle("hidden", !reset);
+  $("aPass").autocomplete = reg ? "new-password" : "current-password";
+  $("aPass").value = $("aPass2").value = "";
+  $("aHint").textContent = reset ? "Если почта ещё не привязана, обратитесь к администратору." :
+    reg ? "Подтвердите email, затем дождитесь доступа от руководителя. Пароль — от 6 символов." :
+      "После привязки почты входите по email. Для аккаунта без почты используйте имя и фамилию.";
   $("aMsg").textContent = "";
 }
 $("aLogin").onclick = () => setAuthMode("login");
 $("aReg").onclick = () => setAuthMode("reg");
-$("aGo").onclick = async () => {
-  const name = $("aName").value.trim().replace(/\s+/g, " "), pass = $("aPass").value;
-  const msg = $("aMsg"); msg.textContent = "";
-  if (name.length < 2) { msg.textContent = "Введите имя."; return; }
-  if (pass.length < 6) { msg.textContent = "Пароль должен быть не короче 6 символов."; return; }
-  if (authMode === "reg" && pass !== $("aPass2").value) { msg.textContent = "Пароли не совпадают."; return; }
-  $("aGo").disabled = true;
-  try {
-    const email = await nameToEmail(name);
-    if (authMode === "login") await A.signInWithEmailAndPassword(auth, email, pass);
-    else {
-      const cred = await A.createUserWithEmailAndPassword(auth, email, pass);
-      await F.setDoc(F.doc(fs, "users/" + cred.user.uid), {name, roles: [], approved: false, created: Date.now()});
-      // первый зарегистрированный становится владельцем
-      try { const o = await F.getDoc(F.doc(fs, "config/owner")); if (!o.exists()) await F.setDoc(F.doc(fs, "config/owner"), {uid: cred.user.uid, at: Date.now()}); } catch(e) {}
-    }
-  } catch(e) { msg.textContent = authError(e); }
-  $("aGo").disabled = false;
+$("aReset").onclick = () => {
+  const email = $("aName").value.trim();
+  $("aName").value = isRealEmail(email) ? email : "";
+  setAuthMode("reset");
+  $("aName").focus();
 };
-for (const id of ["aName", "aPass", "aPass2"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("aGo").click(); });
+$("aBack").onclick = () => { setAuthMode("login"); $("aName").focus(); };
+$("aForm").onsubmit = async e => {
+  e.preventDefault();
+  const mode = authMode, pass = $("aPass").value;
+  const entered = $("aName").value.trim(), name = entered.replace(/\s+/g, " ");
+  const email = (mode === "reg" ? $("aEmail").value.trim() : entered).toLowerCase();
+  const msg = $("aMsg"); msg.textContent = "";
+  if (mode === "reg" && (name.length < 2 || name.length > 60)) { msg.textContent = "Введите имя и фамилию (от 2 до 60 символов)."; return; }
+  if (mode !== "login" && !isRealEmail(email)) { msg.textContent = "Введите полный адрес почты."; return; }
+  if (mode === "login" && !entered) { msg.textContent = "Введите имя и фамилию или email."; return; }
+  if (mode !== "reset" && pass.length < 6) { msg.textContent = "Пароль должен быть не короче 6 символов."; return; }
+  if (mode === "reg" && pass !== $("aPass2").value) { msg.textContent = "Пароли не совпадают."; return; }
+  const controls = ["aGo", "aLogin", "aReg", "aReset", "aBack"].map($);
+  if ($("aGo").disabled) return;
+  controls.forEach(button => { button.disabled = true; });
+  try {
+    if (mode === "reset") {
+      try { await A.sendPasswordResetEmail(auth, email); }
+      catch(error) { if (error.code !== "auth/user-not-found") throw error; }
+      msg.textContent = "Если к этому адресу привязан аккаунт, на почту придёт ссылка для сброса пароля.";
+    } else if (mode === "login") {
+      await A.signInWithEmailAndPassword(auth, isRealEmail(email) ? email : await nameToEmail(name), pass);
+    } else {
+      const cred = await A.createUserWithEmailAndPassword(auth, email, pass);
+      saveRegistrationDraft({uid: cred.user.uid, name});
+      await createRegistrationProfile(cred.user);
+    }
+  } catch(error) { msg.textContent = authError(error); }
+  finally { controls.forEach(button => { button.disabled = false; }); }
+};
+
+function showAccountMessage(id, message){
+  $(id).textContent = message;
+  $(id).classList.toggle("hidden", !message);
+}
+let creatingProfile = false;
+async function createRegistrationProfile(user){
+  if (!user || creatingProfile || registrationDraft?.uid !== user.uid) return;
+  creatingProfile = true;
+  $("waitRetryProfile").disabled = true;
+  showAccountMessage("waitMsg", "");
+  try {
+    const ref = F.doc(fs, "users", user.uid);
+    const name = registrationDraft.name;
+    await F.runTransaction(fs, async tx => {
+      if (!(await tx.get(ref)).exists()) {
+        tx.set(ref, {name, roles: [], approved: false, created: Date.now(), emailPending: true});
+      }
+    });
+    saveRegistrationDraft(null);
+    try {
+      if (!user.emailVerified) await A.sendEmailVerification(user);
+    } catch(e) {
+      showAccountMessage("waitMsg", "Не удалось отправить письмо. Нажмите «Отправить письмо ещё раз».");
+    }
+  } catch(e) {
+    showAccountMessage("waitMsg", "Не удалось сохранить профиль. Нажмите «Завершить регистрацию», чтобы повторить.");
+  } finally {
+    creatingProfile = false;
+    $("waitRetryProfile").disabled = false;
+    if (!me && registrationDraft?.uid === user.uid) gate();
+  }
+}
+$("waitRetryProfile").onclick = () => createRegistrationProfile(auth.currentUser);
+
+async function confirmRegistrationEmail(user){
+  await A.reload(user);
+  if (!user.emailVerified || !isRealEmail(user.email || "")) {
+    showAccountMessage("waitMsg", "Откройте ссылку из письма и нажмите «Я подтвердил почту» ещё раз.");
+    return;
+  }
+  await A.getIdToken(user, true);
+  const profileRef = F.doc(fs, "users", user.uid), ownerRef = F.doc(fs, "config/owner");
+  await F.runTransaction(fs, async tx => {
+    const profile = await tx.get(profileRef);
+    if (profile.data()?.emailPending !== true) return;
+    const owner = await tx.get(ownerRef);
+    if (!owner.exists()) tx.set(ownerRef, {uid: user.uid, at: Date.now()});
+    tx.update(profileRef, {emailPending: false});
+  });
+}
+async function runEmailCheck(action){
+  const user = auth.currentUser;
+  if (!user || $("waitCheckEmail").disabled) return;
+  $("waitCheckEmail").disabled = $("waitResendEmail").disabled = true;
+  showAccountMessage("waitMsg", "");
+  try { await action(user); }
+  catch(e) { showAccountMessage("waitMsg", authError(e)); }
+  finally { $("waitCheckEmail").disabled = $("waitResendEmail").disabled = false; }
+}
+$("waitCheckEmail").onclick = () => runEmailCheck(confirmRegistrationEmail);
+$("waitResendEmail").onclick = () => runEmailCheck(async user => {
+  await A.sendEmailVerification(user);
+  showAccountMessage("waitMsg", "Письмо отправлено. Проверьте также папку «Спам».");
+});
+
+function renderAccountEmail(user){
+  const legacy = isLegacyEmail(user.email);
+  $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
+  $("accountLink").classList.toggle("hidden", !legacy || !emailEnrollmentEnabled);
+  if (!legacy) {
+    $("accountForm").classList.add("hidden");
+    showAccountMessage("accountMsg", "");
+  }
+}
+$("accountLink").onclick = () => {
+  const open = $("accountForm").classList.toggle("hidden") === false;
+  $("accountLink").setAttribute("aria-expanded", open);
+  if (open) $("accountNewEmail").focus();
+  else $("accountPass").value = "";
+};
+$("accountForm").onsubmit = async e => {
+  e.preventDefault();
+  const user = auth.currentUser, button = $("accountSend");
+  if (!emailEnrollmentEnabled || !user || !isLegacyEmail(user.email) || button.disabled) return;
+  const email = $("accountNewEmail").value.trim().toLowerCase();
+  const pass = $("accountPass").value;
+  if (!isRealEmail(email)) { showAccountMessage("accountMsg", "Введите полный адрес почты."); return; }
+  if (!pass) { showAccountMessage("accountMsg", "Введите текущий пароль."); return; }
+  button.disabled = true;
+  showAccountMessage("accountMsg", "");
+  try {
+    await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, pass));
+    await A.verifyBeforeUpdateEmail(user, email);
+    $("accountPass").value = "";
+    $("accountForm").classList.add("hidden");
+    $("accountLink").setAttribute("aria-expanded", "false");
+    showAccountMessage("accountMsg", "Письмо отправлено. Подтвердите адрес по ссылке, затем входите по email с текущим паролем.");
+  } catch(error) { showAccountMessage("accountMsg", authError(error, "link")); }
+  finally { button.disabled = false; }
+};
 const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
 
 /* ---------- запуск ---------- */
 function view(name){ for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
-let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false, startedAsManager = false;
+let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false, startedAsManager = false, emailCheckStarted = false;
 
 function gate(){
   if (!ownerKnown || !meKnown) return;
-  if (amOwner || (me && me.approved)) {
+  const user = auth.currentUser;
+  if (!user) return;
+  if (me?.emailPending === true || (!me && registrationDraft?.uid === user.uid)) {
+    view("waitView");
+    const pendingEmail = me?.emailPending === true;
+    $("waitTitle").textContent = pendingEmail ? "Подтвердите почту" : "Завершение регистрации";
+    $("waitText").textContent = pendingEmail ? "Откройте ссылку из письма, затем вернитесь сюда и нажмите «Я подтвердил почту»." :
+      creatingProfile ? "Сохраняем данные для регистрации." : "Завершите создание профиля, чтобы получить письмо.";
+    $("waitEmailControls").classList.toggle("hidden", !pendingEmail);
+    $("waitRetryProfile").classList.toggle("hidden", pendingEmail || creatingProfile);
+    if (pendingEmail && user.emailVerified && !emailCheckStarted) {
+      emailCheckStarted = true;
+      runEmailCheck(confirmRegistrationEmail);
+    }
+  } else if (amOwner || (me && me.approved)) {
     view("app");
     if (!dataStarted) startData();
     render();
   } else {
     view("waitView");
+    $("waitTitle").textContent = me ? "Ожидает подтверждения" : "Профиль не найден";
+    $("waitEmailControls").classList.add("hidden");
+    $("waitRetryProfile").classList.add("hidden");
+    showAccountMessage("waitMsg", "");
     $("waitText").textContent = me
       ? `${me.name}, вы зарегистрированы. Владелец должен подтвердить ваш доступ — после этого страница откроется сама.`
       : "Профиль не найден. Возможно, владелец удалил вашу учётную запись. Выйдите и зарегистрируйтесь заново.";
@@ -135,6 +301,7 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
 } else {
   const fapp = initializeApp(FIREBASE_CONFIG);
   auth = A.getAuth(fapp);
+  auth.languageCode = "ru";
   try { fs = F.initializeFirestore(fapp, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
   catch(e) { fs = F.getFirestore(fapp); }
   let userSubs = [];
@@ -143,6 +310,8 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
+    emailCheckStarted = false;
+    renderAccountEmail(u);
     loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },

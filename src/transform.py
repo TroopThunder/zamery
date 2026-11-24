@@ -14,27 +14,43 @@ rep('<main>','''<div id="authView" class="authwrap hidden">
   <div class="card authcard">
     <div class="apptitle">GlixPro master</div>
     <h1 id="authTitle">Вход</h1>
-    <div class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
+    <div id="aTabs" class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
       <button id="aLogin" role="tab" aria-selected="true">Вход</button>
       <button id="aReg" role="tab" aria-selected="false">Регистрация</button>
     </div>
-    <label for="aName">Имя и фамилия</label>
-    <input id="aName" autocomplete="username" placeholder="Например, Иван Петров">
-    <label for="aPass">Пароль</label>
-    <input id="aPass" type="password" autocomplete="current-password" placeholder="Не короче 6 символов">
-    <div id="aPass2Wrap" class="hidden" style="display:flex;flex-direction:column;gap:6px">
-      <label for="aPass2">Повторите пароль</label>
-      <input id="aPass2" type="password" autocomplete="new-password">
-    </div>
-    <button id="aGo">Войти</button>
-    <div class="msg" id="aMsg"></div>
-    <div class="empty" id="aHint">Нет аккаунта? Откройте «Регистрация». После регистрации владелец выдаст вам доступ.</div>
+    <form id="aForm" class="account-form" novalidate>
+      <label for="aName" id="aNameLabel">Имя и фамилия или email</label>
+      <input id="aName" autocomplete="username" autocapitalize="none" spellcheck="false">
+      <div id="aEmailWrap" class="account-form hidden">
+        <label for="aEmail">Email</label>
+        <input id="aEmail" type="email" autocomplete="email">
+      </div>
+      <div id="aPassWrap" class="account-form">
+        <label for="aPass">Пароль</label>
+        <input id="aPass" type="password" autocomplete="current-password">
+      </div>
+      <div id="aPass2Wrap" class="account-form hidden">
+        <label for="aPass2">Повторите пароль</label>
+        <input id="aPass2" type="password" autocomplete="new-password">
+      </div>
+      <button id="aGo">Войти</button>
+    </form>
+    <button class="link" id="aReset">Забыли пароль?</button>
+    <button class="link hidden" id="aBack">Вернуться ко входу</button>
+    <div class="msg" id="aMsg" role="status"></div>
+    <div class="empty" id="aHint"></div>
   </div>
 </div>
 <div id="waitView" class="authwrap hidden">
   <div class="card authcard">
-    <h1>Ожидает подтверждения</h1>
+    <h1 id="waitTitle">Ожидает подтверждения</h1>
     <p id="waitText" style="margin:0"></p>
+    <div id="waitEmailControls" class="account-form hidden">
+      <button id="waitCheckEmail">Я подтвердил почту</button>
+      <button class="link" id="waitResendEmail">Отправить письмо ещё раз</button>
+    </div>
+    <button id="waitRetryProfile" class="hidden">Завершить регистрацию</button>
+    <div class="msg hidden" id="waitMsg" role="status"></div>
     <button class="sec" id="waitLogout">Выйти</button>
   </div>
 </div>
@@ -67,6 +83,19 @@ rep('''    <div class="card" id="summaryFloors"></div>
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
+    <div class="card">
+      <h2>Аккаунт</h2>
+      <div class="empty account-address" id="accountEmail"></div>
+      <button class="sec hidden" id="accountLink" aria-expanded="false" aria-controls="accountForm">Привязать почту</button>
+      <form id="accountForm" class="account-form hidden" novalidate>
+        <label for="accountNewEmail">Email</label>
+        <input id="accountNewEmail" type="email" autocomplete="email">
+        <label for="accountPass">Текущий пароль WrapPRO</label>
+        <input id="accountPass" type="password" autocomplete="current-password">
+        <button id="accountSend">Отправить письмо</button>
+      </form>
+      <div class="msg hidden" id="accountMsg" role="status"></div>
+    </div>
   </section>
 </main>''')
 rep('<div id="status" class="notice">Подключаюсь к общей базе…</div>','<div id="status" class="notice hidden"></div>\n  <div class="notice hidden" id="shiftWarn" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="grow"></span><button class="sec" id="shiftWarnGo">Открыть «Мою смену»</button></div>')
@@ -91,6 +120,9 @@ rep('''    <div class="row hidden" id="objNewRow">
 rep('.hidden{display:none !important}','''.authwrap{min-height:100vh;display:grid;place-items:center;padding:16px}
 .authcard{max-width:380px;width:100%}
 .authcard input{width:100%}
+.account-form{display:flex;flex-direction:column;gap:6px}
+.account-form input{min-width:0;width:100%}
+.account-address{overflow-wrap:anywhere}
 .msg{color:var(--warn);font-size:14px;min-height:1.2em}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grid2 input{width:100%}

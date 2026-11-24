@@ -193,9 +193,9 @@ function renderAdmin(){
   // выбор одного сотрудника из списка; ожидающие доступа — вверху списка
   if (list.length) {
     if (!list.some(([id]) => id === adminUser)) adminUser = list[0][0];
-    const pend = list.filter(([id, u]) => id !== ownerUid && !u.approved).length;
+    const pend = list.filter(([id, u]) => id !== ownerUid && !u.approved && !u.emailPending).length;
     const sel = el("select", {id: "admUserSel"});
-    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (id === ownerUid ? " ★" : u.approved ? "" : " — ждёт доступа")}));
+    for (const [id, u] of list) sel.append(el("option", {value: id, textContent: (u.name || "Без имени") + (id === ownerUid ? " ★" : u.emailPending ? " — подтверждает почту" : u.approved ? "" : " — ждёт доступа")}));
     sel.value = adminUser;
     sel.onchange = () => { adminUser = sel.value; render(); };
     uc.append(el("label", {htmlFor: "admUserSel", textContent: `Выберите сотрудника (всего ${list.length}${pend ? `, ждут доступа: ${pend}` : ""})`}), sel);
@@ -204,7 +204,7 @@ function renderAdmin(){
     const isOwn = id === ownerUid;
     const ref = F.doc(fs, "users/" + id);
     const upd = async patch => { try { await F.updateDoc(ref, patch); } catch(e) { toast(errMsg(e)); } };
-    const ap = el("input", {type: "checkbox", checked: !!u.approved, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
+    const ap = el("input", {type: "checkbox", checked: !!u.approved, disabled: !!u.emailPending, id: `ap-${id}`}); ap.onchange = () => upd({approved: ap.checked});
     const chips = el("div", {className: "chips"});
     // старое право «Все работы» (admin) показываем как три отдельные галочки
     const cur = new Set(u.roles || []);
@@ -235,7 +235,7 @@ function renderAdmin(){
          el("div", {className: "empty", textContent: "Что может изменять («Управление» — доступ к этому разделу: сотрудники, цены, смены, оплата):"}), chips];
     uc.append(el("div", {className: "member"},
       el("div", {className: "row"}, el("b", {className: "grow", textContent: (u.name || "Без имени") + (id === myId ? " (вы)" : "")}),
-        el("span", {className: "pill" + (isOwn || u.approved ? " ok" : ""), textContent: isOwn ? "★" : u.approved ? "работает" : "ждёт доступа"})),
+        el("span", {className: "pill" + (isOwn || u.approved ? " ok" : ""), textContent: isOwn ? "★" : u.emailPending ? "подтверждает почту" : u.approved ? "работает" : "ждёт доступа"})),
       ...rights,
       el("div", {className: "grid2"},
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),

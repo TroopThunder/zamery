@@ -10,7 +10,15 @@ service cloud.firestore {
     function isOwner() { return signedIn() && exists(ownerDoc()) && get(ownerDoc()).data.uid == request.auth.uid; }
     function meDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function hasMe() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function approved() { return isOwner() || (hasMe() && meDoc().get('approved', false) == true); }
+    function approved() { return isOwner() || (hasMe() && meDoc().get('approved', false) == true && !meDoc().get('emailPending', false)); }
+    function hasRealEmail() {
+      let email = request.auth.token.get('email', '');
+      return email is string && email.matches('^[^@]+@[^@]+[.][^@]+$')
+        && !email.lower().matches('.*@zamery[.]app$');
+    }
+    function hasVerifiedEmail() {
+      return hasRealEmail() && request.auth.token.get('email_verified', false) == true;
+    }
     function hasRole(r) {
       return isOwner() || (approved() && (r in meDoc().get('roles', []) || 'admin' in meDoc().get('roles', [])));
     }
@@ -36,23 +44,32 @@ service cloud.firestore {
         && math.abs(d.sum - (d.cutArea * d.priceCut + d.glueArea * d.priceGlue)) <= 1;
     }
 
-    // Кто владелец. Записать можно один раз — первому зарегистрированному.
+    // Кто владелец. Первый подтверждённый профиль получает право создать запись.
     match /config/owner {
       allow read: if signedIn();
-      allow create: if signedIn() && !exists(ownerDoc()) && request.resource.data.uid == request.auth.uid;
+      allow create: if signedIn() && !exists(ownerDoc()) && request.resource.data.uid == request.auth.uid
+        && hasVerifiedEmail()
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.emailPending == false;
     }
 
     // Профили сотрудников. Сам себе человек может только создать профиль без прав.
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || approved());
       allow create: if signedIn() && request.auth.uid == uid
+        && hasRealEmail() && request.resource.data.emailPending == true
         && request.resource.data.roles == []
         && request.resource.data.approved == false
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && !('rateCut' in request.resource.data) && !('rateGlue' in request.resource.data);
-      // профиль владельца может менять только сам владелец; удалить его нельзя никому
-      allow update: if isManager() && (uid != get(ownerDoc()).data.uid || isOwner());
+      // Подтверждение относится только к своему профилю и не выдаёт рабочих прав.
+      allow update: if signedIn() && request.auth.uid == uid && hasVerifiedEmail()
+        && resource.data.emailPending == true && request.resource.data.emailPending == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['emailPending']);
+      // Руководитель выдаёт доступ после подтверждения почты; старые профили уже готовы.
+      allow update: if isManager() && (uid != get(ownerDoc()).data.uid || isOwner())
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['emailPending'])
+        && (!resource.data.get('emailPending', false) || request.resource.data.approved == false);
       allow delete: if isManager() && uid != get(ownerDoc()).data.uid;
     }
 
