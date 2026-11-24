@@ -1,0 +1,53 @@
+name: Check Spark email release
+on:
+  push:
+    branches: [codex/check-spark-email]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build and run emulator checks
+        run: |
+          bash src/build.sh
+          cat > "$RUNNER_TEMP/verify.mjs" <<'JS'
+          import assert from 'node:assert/strict';
+          const a='http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:';
+          const db='http://127.0.0.1:8080/v1/projects/demo-wrappro/databases/(default)/documents/';
+          async function call(url,method,body,token){
+           const r=await fetch(url,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
+           const result=await r.json(); assert.ok(r.ok,method+' '+url.split('?')[0]+' '+JSON.stringify(result.error)); return result;
+          }
+          const auth=(op,body)=>call(a+op+'?key=fake-api-key','POST',body);
+          const email='employee@example.test',password='test-password';
+          let user=await auth('signUp',{email,password,returnSecureToken:true});
+          const uid=user.localId, path='users/'+uid;
+          const fields={name:{stringValue:'Test Employee'},roles:{arrayValue:{values:[]}},approved:{booleanValue:false},emailPending:{booleanValue:true},created:{integerValue:'1'}};
+          await call(db+path,'PATCH',{fields},user.idToken);
+          await auth('sendOobCode',{requestType:'VERIFY_EMAIL',idToken:user.idToken});
+          async function code(type){const r=await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-wrappro/oobCodes');const v=await r.json();return v.oobCodes.filter(x=>x.requestType===type).at(-1).oobCode;}
+          await auth('update',{oobCode:await code('VERIFY_EMAIL')});
+          user=await auth('signInWithPassword',{email,password,returnSecureToken:true});
+          await call(db+path+'?updateMask.fieldPaths=emailPending','PATCH',{fields:{emailPending:{booleanValue:false}}},user.idToken);
+          const profile=await call(db+path,'GET',undefined,user.idToken);
+          assert.equal(profile.fields.approved.booleanValue,false);
+          await auth('sendOobCode',{requestType:'PASSWORD_RESET',email});
+          await auth('resetPassword',{oobCode:await code('PASSWORD_RESET'),newPassword:'new-test-password'});
+          assert.equal((await auth('signInWithPassword',{email,password:'new-test-password',returnSecureToken:true})).localId,uid);
+          const old=await auth('signUp',{email:'ulegacy@zamery.app',password,returnSecureToken:true});
+          await auth('sendOobCode',{requestType:'VERIFY_AND_CHANGE_EMAIL',idToken:old.idToken,newEmail:'linked@example.test'});
+          await auth('update',{oobCode:await code('VERIFY_AND_CHANGE_EMAIL')});
+          assert.equal((await auth('signInWithPassword',{email:'linked@example.test',password,returnSecureToken:true})).localId,old.localId);
+          console.log('Verified email registration, pending access, reset, and migration with preserved UID');
+          JS
+          npx --yes firebase-tools@14 emulators:exec --project demo-wrappro --only auth,firestore "node $RUNNER_TEMP/verify.mjs"
