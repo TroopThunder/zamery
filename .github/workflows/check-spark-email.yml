@@ -50,6 +50,7 @@ jobs:
           assert.equal((await auth('signInWithPassword',{email:'linked@example.test',password,returnSecureToken:true})).localId,old.localId);
           console.log('Verified email registration, pending access, reset, and migration with preserved UID');
           JS
+          node -e "const f=require('fs'), c=JSON.parse(f.readFileSync('firebase.json'));c.emulators={auth:{port:9099},firestore:{port:8080},ui:{enabled:false}};f.writeFileSync('firebase.json',JSON.stringify(c))"
           npx --yes firebase-tools@14 emulators:exec --project demo-wrappro --only auth,firestore "node $RUNNER_TEMP/verify.mjs"
       - name: Check mobile login, registration and password reset screens
         run: |
