@@ -1,5 +1,5 @@
 /* ===== эффект стекла (включается в «Настройках», сила — ползунком) ===== */
-:root{--glass-tint:255,255,255;--glass-field:244,246,249;--glass-edge:rgba(255,255,255,.55);--glass-shadow:0 6px 24px rgba(20,30,45,.10);--accent-rgb:226,89,15}
+:root{--glass-tint:255,255,255;--glass-field:244,246,249;--glass-edge:rgba(255,255,255,.55);--glass-shadow:0 6px 24px rgba(20,30,45,.10);--accent-rgb:23,123,172}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}}
 :root[data-theme="dark"]{--glass-tint:30,38,47;--glass-field:20,26,33;--glass-edge:rgba(255,255,255,.10);--glass-shadow:0 6px 24px rgba(0,0,0,.35)}
 /* цветные пятна позади стекла — без них размывать нечего */

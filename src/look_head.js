@@ -1,9 +1,10 @@
 /* Внешний вид: тема, главный цвет и эффект стекла.
    Этот код стоит в <head> и срабатывает до показа страницы,
-   поэтому сохранённый цвет виден сразу, без мигания оранжевым. */
+   поэтому сохранённый цвет виден сразу, без мигания. */
 (function(){
   var KEY = "windows-look";
   var ACCENTS = {
+    sky:    {name: "Голубой", light: ["#177bac", "#dff2fc"], dark: ["#48b5e8", "#162e3b"]},
     orange: {name: "Оранжевый", light: ["#e2590f", "#fde9dc"], dark: ["#ff7a33", "#3a2416"]},
     blue:   {name: "Синий",     light: ["#1f6feb", "#dbe8fd"], dark: ["#4c9aff", "#16263d"]},
     green:  {name: "Зелёный",   light: ["#1a8a4a", "#daf1e3"], dark: ["#3fcf7f", "#15301f"]},
@@ -12,7 +13,7 @@
     red:    {name: "Красный",   light: ["#d0342c", "#fbe0de"], dark: ["#ff6b61", "#3a1d1b"]},
     pink:   {name: "Розовый",   light: ["#d6336c", "#fbe0ea"], dark: ["#ff6b9e", "#3a1b28"]}
   };
-  var DEF = {theme: "auto", accent: "orange", glass: 50, t: 0};
+  var DEF = {theme: "auto", accent: "sky", glass: 50, t: 0};
   var darkMq = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : {matches: false};
   function clean(o){
     var l = {theme: DEF.theme, accent: DEF.accent, glass: DEF.glass, t: 0};
@@ -31,7 +32,7 @@
   function apply(l){
     var root = document.documentElement, dark = isDark(l);
     if (l.theme === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", l.theme);
-    var a = ACCENTS[l.accent] || ACCENTS.orange, c = dark ? a.dark : a.light;
+    var a = ACCENTS[l.accent] || ACCENTS[DEF.accent], c = dark ? a.dark : a.light;
     root.style.setProperty("--accent", c[0]);
     root.style.setProperty("--accent-soft", c[1]);
     root.style.setProperty("--accent-ink", dark ? "#14100c" : "#ffffff");
