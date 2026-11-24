@@ -1,4 +1,6 @@
 import re, os
+from base64 import b64encode
+from pathlib import Path
 SRC = os.path.dirname(os.path.abspath(__file__))
 s=open(os.path.join(SRC,'base.html'),encoding='utf-8').read()
 def rep(a,b,cnt=1):
@@ -10,7 +12,7 @@ s=re.sub(r'\n  <div class="card hidden" id="teamCard">.*?\n  </div>\n','\n',s,co
 assert 'id="teamCard"' not in s
 rep('<main>','''<div id="authView" class="authwrap hidden">
   <div class="card authcard">
-    <div class="apptitle">Wrap PRO</div>
+    <div class="apptitle">GlixPro master</div>
     <h1 id="authTitle">Вход</h1>
     <div class="tabs" style="grid-template-columns:1fr 1fr" role="tablist">
       <button id="aLogin" role="tab" aria-selected="true">Вход</button>
@@ -110,7 +112,7 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">','''<m
 <meta name="theme-color" content="#12171d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Wrap PRO">
+<meta name="apple-mobile-web-app-title" content="GlixPro master">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
 '''+open(os.path.join(SRC,'look_head.js'),encoding='utf-8').read()+'''</script>''')
@@ -250,7 +252,9 @@ $("teamClose").onclick = () => $("teamCard").classList.add("hidden");
 # startup
 i=s.index('/* ---------- запуск ---------- */'); j=s.index('</script>', i)
 s=s[:i]+open(os.path.join(SRC,'startup.js'),encoding='utf-8').read()+'\n'+s[j:]
-s=s.replace('Замеры окон','Wrap PRO')
+for theme in ('light', 'dark'):
+    icon = (Path(SRC) / f'brand-icon-{theme}.png').read_bytes()
+    s = s.replace(f'__BRAND_ICON_{theme.upper()}__', 'data:image/png;base64,' + b64encode(icon).decode('ascii'))
 # регистрация сервис-воркера и кнопка установки
 s=s.replace('</script>\n</body>','''
 /* ---------- установка как приложение ---------- */

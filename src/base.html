@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Замеры окон</title>
+<title>GlixPro master</title>
+<meta name="description" content="Сервис для организации процесса оклейки окон">
+<meta property="og:title" content="GlixPro master">
+<meta property="og:description" content="Сервис для организации процесса оклейки окон">
+<meta property="og:url" content="https://glixpro-master.ru/">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -74,7 +79,24 @@ button:disabled{opacity:.45;cursor:default}
 #drawer{position:fixed;top:0;left:0;bottom:0;width:min(280px,82vw);background:var(--surface);border-right:1px solid var(--line);z-index:10;transform:translateX(-102%);display:flex;flex-direction:column;gap:2px;padding:12px;overflow-y:auto}
 #drawer.open{transform:none;box-shadow:4px 0 24px rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
-.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 12px}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 4px 12px}
+.drawer-head .iconbtn{flex:none}
+.drawer-brand{display:flex;align-items:center;gap:8px;color:#082c54}
+.drawer-brand img{display:block;width:clamp(40px,15vw,58px);height:auto}
+.drawer-brand .brand-icon-dark{display:none}
+.brand-name{font:700 clamp(20px,6.4vw,26px)/1 var(--display);white-space:nowrap}
+.brand-name small{display:block;font-size:.59em}
+.brand-accent{color:#177bac}
+:root[data-theme="dark"] .drawer-brand{color:var(--ink)}
+:root[data-theme="dark"] .brand-accent{color:#48b5e8}
+:root[data-theme="dark"] .brand-icon-light{display:none}
+:root[data-theme="dark"] .brand-icon-dark{display:block}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .drawer-brand{color:var(--ink)}
+  :root:not([data-theme="light"]) .brand-accent{color:#48b5e8}
+  :root:not([data-theme="light"]) .brand-icon-light{display:none}
+  :root:not([data-theme="light"]) .brand-icon-dark{display:block}
+}
 .navitem{background:none;border:0;color:var(--ink);text-align:left;padding:13px 12px;border-radius:10px;font-weight:500;font-size:16px}
 .navitem[aria-current="page"]{background:var(--accent-soft);font-weight:600}
 .navsep{height:1px;background:var(--line);margin:8px 4px}
@@ -128,7 +150,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <button id="menuBtn" class="iconbtn" aria-label="Открыть меню" aria-controls="drawer" aria-expanded="false">
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
-    <div class="grow"><div class="apptitle">Замеры окон</div><h1 id="pageTitle">Замер</h1></div>
+    <div class="grow"><div class="apptitle">GlixPro master</div><h1 id="pageTitle">Замер</h1></div>
   </header>
   <div class="row" id="meRow"><span id="meChip" class="pill">Загружаю профиль…</span></div>
   <div class="card hidden" id="teamCard">
@@ -240,7 +262,13 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </main>
 <div class="backdrop hidden" id="backdrop"></div>
 <nav id="drawer" aria-label="Разделы" aria-hidden="true">
-  <div class="drawer-head"><b>Замеры окон</b><button class="iconbtn" id="menuClose" aria-label="Закрыть меню">
+  <div class="drawer-head">
+    <div class="drawer-brand">
+      <img class="brand-icon-light" src="__BRAND_ICON_LIGHT__" width="120" height="116" alt="">
+      <img class="brand-icon-dark" src="__BRAND_ICON_DARK__" width="120" height="116" alt="">
+      <div class="brand-name">Gli<span class="brand-accent">x</span>Pro <small>master</small></div>
+    </div>
+    <button class="iconbtn" id="menuClose" aria-label="Закрыть меню">
     <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
   <button class="navitem" data-tab="measure">Замер</button>
   <button class="navitem" data-tab="types">Окна</button>
