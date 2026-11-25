@@ -186,7 +186,8 @@ $("waitResendEmail").onclick = () => runEmailCheck(async user => {
 function renderAccountEmail(user){
   const legacy = isLegacyEmail(user.email);
   $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
-  $("accountLink").classList.toggle("hidden", !legacy || !emailEnrollmentEnabled);
+  $("accountLink").classList.toggle("hidden", !emailEnrollmentEnabled);
+  $("accountLink").textContent = legacy ? "Привязать почту" : "Изменить почту";
   if (!legacy) {
     $("accountForm").classList.add("hidden");
     showAccountMessage("accountMsg", "");
@@ -201,10 +202,11 @@ $("accountLink").onclick = () => {
 $("accountForm").onsubmit = async e => {
   e.preventDefault();
   const user = auth.currentUser, button = $("accountSend");
-  if (!emailEnrollmentEnabled || !user || !isLegacyEmail(user.email) || button.disabled) return;
+  if (!emailEnrollmentEnabled || !user || button.disabled) return;
   const email = $("accountNewEmail").value.trim().toLowerCase();
   const pass = $("accountPass").value;
   if (!isRealEmail(email)) { showAccountMessage("accountMsg", "Введите полный адрес почты."); return; }
+  if (email === user.email.toLowerCase()) { showAccountMessage("accountMsg", "Введите новый адрес почты."); return; }
   if (!pass) { showAccountMessage("accountMsg", "Введите текущий пароль."); return; }
   button.disabled = true;
   showAccountMessage("accountMsg", "");
@@ -216,7 +218,36 @@ $("accountForm").onsubmit = async e => {
     $("accountLink").setAttribute("aria-expanded", "false");
     showAccountMessage("accountMsg", "Письмо отправлено. Подтвердите адрес по ссылке, затем входите по email с текущим паролем.");
   } catch(error) { showAccountMessage("accountMsg", authError(error, "link")); }
-  finally { button.disabled = false; }
+  finally { $("accountPass").value = ""; button.disabled = false; }
+};
+$("accountPassword").onclick = () => {
+  const open = !$("passwordForm").classList.toggle("hidden");
+  $("accountPassword").setAttribute("aria-expanded", open);
+  for (const id of ["passwordCurrent", "passwordNew", "passwordRepeat"]) $(id).value = "";
+  showAccountMessage("passwordMsg", "");
+  if (open) $("passwordCurrent").focus();
+};
+$("passwordForm").onsubmit = async e => {
+  e.preventDefault();
+  const user = auth.currentUser, button = $("passwordSave");
+  if (!user || button.disabled) return;
+  const current = $("passwordCurrent").value, password = $("passwordNew").value;
+  if (!current) { showAccountMessage("passwordMsg", "Введите текущий пароль."); return; }
+  if (password.length < 6) { showAccountMessage("passwordMsg", "Пароль должен быть не короче 6 символов."); return; }
+  if (password !== $("passwordRepeat").value) { showAccountMessage("passwordMsg", "Пароли не совпадают."); return; }
+  button.disabled = true;
+  showAccountMessage("passwordMsg", "");
+  try {
+    await A.reauthenticateWithCredential(user, A.EmailAuthProvider.credential(user.email, current));
+    await A.updatePassword(user, password);
+    $("passwordForm").classList.add("hidden");
+    $("accountPassword").setAttribute("aria-expanded", "false");
+    showAccountMessage("passwordMsg", "Пароль изменён. Используйте его при следующем входе.");
+  } catch(error) { showAccountMessage("passwordMsg", authError(error, "link")); }
+  finally {
+    for (const id of ["passwordCurrent", "passwordNew", "passwordRepeat"]) $(id).value = "";
+    button.disabled = false;
+  }
 };
 const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;

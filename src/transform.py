@@ -95,6 +95,17 @@ rep('''    <div class="card" id="summaryFloors"></div>
         <button id="accountSend">Отправить письмо</button>
       </form>
       <div class="msg hidden" id="accountMsg" role="status"></div>
+      <button class="sec" id="accountPassword" aria-expanded="false" aria-controls="passwordForm">Изменить пароль</button>
+      <form id="passwordForm" class="account-form hidden" novalidate>
+        <label for="passwordCurrent">Текущий пароль Glix Pro</label>
+        <input id="passwordCurrent" type="password" autocomplete="current-password">
+        <label for="passwordNew">Новый пароль</label>
+        <input id="passwordNew" type="password" autocomplete="new-password">
+        <label for="passwordRepeat">Повторите новый пароль</label>
+        <input id="passwordRepeat" type="password" autocomplete="new-password">
+        <button id="passwordSave">Сохранить пароль</button>
+      </form>
+      <div class="msg hidden" id="passwordMsg" role="status"></div>
     </div>
   </section>
 </main>''')
