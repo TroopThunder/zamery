@@ -1189,11 +1189,11 @@ $("copyBtn").onclick = async () => {
   catch(e) { toast(errMsg(e)); }
 };
 $("addSize").onclick = onAddSize;
-$("measureLocation").onclick = () => {
+$("measureLocation").onclick = e => {
   roomChooserOpen = !roomChooserOpen;
   renderMeasureLocation();
+  e.currentTarget.focus({preventScroll: true});
   window.scrollTo(0, 0);
-  if (roomChooserOpen) $("roomSearch").focus({preventScroll: true});
 };
 $("windowAdded").addEventListener("close", () => {
   if (!$("tab-measure").classList.contains("hidden") && !$("inW").disabled) $("inW").focus({preventScroll: true});
