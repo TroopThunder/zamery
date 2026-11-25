@@ -387,8 +387,14 @@ function counts(){ // num -> total
   for (const r of rooms) for (const [n, q] of Object.entries(r.items || {})) if (q > 0) c[n] = (c[n] || 0) + q;
   return c;
 }
-function saveRoom(r){
-  writeDoc(roomPath(r.id), () => ({floor: r.floor, name: r.name, items: {...r.items}, updated: Date.now()}));
+function roomItemsPatch(data, changes){
+  const items = {...data.items};
+  for (const [n, delta] of Object.entries(changes)) {
+    const qty = Math.max(0, (items[n] || 0) + delta);
+    if (qty) items[n] = qty;
+    else delete items[n];
+  }
+  return {items, updated: Date.now()};
 }
 
 function openObject(id){
@@ -406,14 +412,10 @@ function openObject(id){
     render();
   }, e => { clearTimeout(timer); status("Не удалось загрузить окна объекта."); }));
   unsubs.push(db.collection(objPath() + "/rooms").onSnapshot(s => {
-    const local = Object.fromEntries(rooms.map(r => [r.id, r]));
     rooms = s.docs.map(d => {
       const v = d.data() || {};
-      if (local[d.id] && busy(roomPath(d.id))) return local[d.id];   // свои несохранённые правки важнее
       return {id: d.id, floor: String(v.floor ?? ""), name: String(v.name ?? ""), items: {...(v.items || {})}};
     });
-    // кабинеты, созданные здесь и ещё не дошедшие до базы
-    for (const r of Object.values(local)) if (!rooms.find(x => x.id === r.id) && busy(roomPath(r.id))) rooms.push(r);
     if (!s.metadata.fromCache) { roomsLoaded = true; done(); }
     if (curRoomId && !rooms.find(r => r.id === curRoomId)) curRoomId = null;
     render();
@@ -723,33 +725,52 @@ async function createType(w, h){
   throw {code: "unavailable"};
 }
 
-function addToRoom(n, q = 1){
+async function addToRoom(n, q = 1){
   const r = room(); if (!r) { toast("Сначала выберите кабинет"); return; }
-  r.items[n] = Math.max(0, (r.items[n] || 0) + q);
-  if (!r.items[n]) delete r.items[n];
-  saveRoom(r); render();
+  try {
+    await db.doc(roomPath(r.id)).changeItems({[n]: q});
+    return true;
+  } catch(e) { toast(errMsg(e)); }
 }
 
 /* ---------- ввод размера ---------- */
+let sizeSaving = false;
 async function onAddSize(){
+  if (sizeSaving) return;
   hideMatch();   // старая подсказка «похоже на…» больше не нужна
   const w = num($("inW").value), h = num($("inH").value);
   if (!(w > 0) || !(h > 0)) { toast("Введите ширину и высоту в сантиметрах"); return; }
   if (!room()) { toast("Сначала выберите кабинет"); return; }
   const all = Object.values(types);
   const exact = all.find(t => t.w === w && t.h === h);
-  if (exact) { addToRoom(exact.num); toast(`Добавлено: ${code(exact.num)}`); clearInputs(); return; }
+  if (exact) { await addKnownSize(exact.num); return; }
   const near = all.filter(t => Math.abs(t.w - w) <= TOL && Math.abs(t.h - h) <= TOL);
   if (near.length) { showMatch(w, h, near); return; }
   await addNew(w, h);
 }
 async function addNew(w, h){
+  const r = room(); if (!r || sizeSaving) return;
+  const oid = curObj;
+  sizeSaving = true;
+  render();
   try {
-    $("addSize").disabled = true;
-    const n = await createType(w, h);
-    addToRoom(n); toast(`Новое окно: ${code(n)} (${cm(w)}×${cm(h)})`); clearInputs();
+    const label = await createType(w, h, oid, r);
+    toast(`Добавлено: ${label} (${cm(w)}×${cm(h)})`);
+    if (curObj === oid && curRoomId === r.id) clearInputs();
   } catch(e) { toast(errMsg(e)); }
-  finally { $("addSize").disabled = !allowed("measure"); }
+  finally { sizeSaving = false; render(); }
+}
+async function addKnownSize(n){
+  if (sizeSaving) return;
+  const oid = curObj, rid = curRoomId, label = code(n);
+  sizeSaving = true;
+  render();
+  try {
+    if (await addToRoom(n)) {
+      toast(`Добавлено: ${label}`);
+      if (curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
+    }
+  } finally { sizeSaving = false; render(); }
 }
 function showMatch(w, h, near){
   const box = $("matchBox");
@@ -762,7 +783,7 @@ function showMatch(w, h, near){
   for (const t of near) {
     const b = document.createElement("button");
     b.textContent = `Да, это ${code(t.num)} (${cm(t.w)}×${cm(t.h)})`;
-    b.onclick = () => { addToRoom(t.num); toast(`Добавлено: ${code(t.num)}`); hideMatch(); clearInputs(); };
+    b.onclick = () => addKnownSize(t.num);
     row.append(b);
   }
   const nb = document.createElement("button"); nb.className = "sec"; nb.textContent = "Нет, это новое окно";
@@ -843,7 +864,7 @@ function renderAll(){
         el("div", {className: "qty"}, minus, el("span", {textContent: r.items[n]}), plus)));
     }
   }
-  for (const id of ["inW", "inH", "addSize"]) $(id).disabled = !r || !allowed("measure");
+  for (const id of ["inW", "inH", "addSize"]) $(id).disabled = sizeSaving || !r || !allowed("measure");
   $("codeHint").textContent = r ? `Новые размеры на этом этаже получат коды ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor))}, ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor)) + 1}… Уже записанный размер (с любого этажа, разница до 5 мм) — тот же код.` : "";
 
   // копирование
@@ -860,7 +881,7 @@ function renderAll(){
   for (const t of tlist) {
     const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
     b.disabled = !r || !allowed("measure");
-    b.onclick = () => { addToRoom(t.num); toast(`Добавлено: ${code(t.num)}`); };
+    b.onclick = async () => { const label = code(t.num); if (await addToRoom(t.num)) toast(`Добавлено: ${label}`); };
     tb.append(b);
   }
 
@@ -1042,24 +1063,36 @@ $("objCreate").onclick = async () => {
 $("floorCreate").onclick = async () => {
   const f = $("floorNewName").value.trim(); if (!f) return;
   const o = objects.find(o => o.id === curObj); if (!o) return;
-  const fl = [...new Set([...(o.floors || []), f])];
-  try { await db.doc(objPath()).update({floors: fl}); o.floors = fl; curFloor = f; curRoomId = null; $("floorNewName").value = ""; $("floorNewRow").classList.add("hidden"); render(); }
+  try {
+    await db.doc(objPath()).addFloor(f);
+    if (curObj === o.id) { curFloor = f; curRoomId = null; $("floorNewName").value = ""; $("floorNewRow").classList.add("hidden"); render(); }
+  }
   catch(e) { toast(errMsg(e)); }
 };
-$("roomCreate").onclick = () => {
+let creatingRoom = false;
+$("roomCreate").onclick = async () => {
   const name = $("roomNewName").value.trim(); if (!name || curFloor === null) return;
   if (rooms.some(r => r.floor === curFloor && r.name === name)) { toast("Такой кабинет на этаже уже есть"); return; }
-  const id = db.collection(objPath() + "/rooms").doc().id;
-  const r = {id, floor: curFloor, name, items: {}};
-  rooms.push(r); curRoomId = id; saveRoom(r);
-  $("roomNewName").value = ""; $("roomNewRow").classList.add("hidden"); render(); $("inW").focus();
+  if (creatingRoom) return;
+  const oid = curObj, floor = curFloor;
+  const ref = db.collection(objPath() + "/rooms").doc();
+  creatingRoom = true;
+  try {
+    await ref.set({floor, name, items: {}, updated: Date.now()});
+    if (curObj === oid && curFloor === floor) {
+      curRoomId = ref.id;
+      $("roomNewName").value = ""; $("roomNewRow").classList.add("hidden"); render(); $("inW").focus();
+    }
+  } catch(e) { toast(errMsg(e)); }
+  finally { creatingRoom = false; }
 };
 $("roomDel").onclick = function(){ const r = room(); if (!r) return; confirmTap(this, async () => {
   try { await db.doc(roomPath(r.id)).delete(); rooms = rooms.filter(x => x.id !== r.id); curRoomId = null; render(); toast("Кабинет удалён"); } catch(e) { toast(errMsg(e)); } }); };
-$("copyBtn").onclick = () => {
+$("copyBtn").onclick = async () => {
   const r = room(), src = rooms.find(x => x.id === $("copyFrom").value); if (!r || !src) return;
-  for (const [n, q] of Object.entries(src.items)) if (q > 0) r.items[n] = (r.items[n] || 0) + q;
-  saveRoom(r); render(); toast(`Скопировано из кабинета ${src.name}`);
+  const changes = Object.fromEntries(Object.entries(src.items).filter(([, q]) => q > 0));
+  try { await db.doc(roomPath(r.id)).changeItems(changes); toast(`Скопировано из кабинета ${src.name}`); }
+  catch(e) { toast(errMsg(e)); }
 };
 $("addSize").onclick = onAddSize;
 // поменяли размер — подсказка о похожем окне уже не про него

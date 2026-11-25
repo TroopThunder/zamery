@@ -101,7 +101,10 @@ $("renameGo").onclick = async () => {
   } else {
     const r = room(); if (!r) return;
     if (rooms.some(x => x.id !== r.id && x.floor === r.floor && x.name === val)) { toast("Такой кабинет на этаже уже есть"); return; }
-    r.name = val; saveRoom(r); $("renameBox").classList.add("hidden"); toast("Кабинет переименован"); render();
+    try {
+      await db.doc(roomPath(r.id)).update({name: val, updated: Date.now()});
+      $("renameBox").classList.add("hidden"); toast("Кабинет переименован");
+    } catch(e) { toast(errMsg(e)); }
   }
 };
 $("floorDel").onclick = function(){

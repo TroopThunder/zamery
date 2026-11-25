@@ -240,6 +240,9 @@ rep('''function errMsg(e){
   if (c.includes("permission-denied")) return "Нет прав на это действие. Права выдаёт владелец.";
   if (c.includes("resource-exhausted")) return "Исчерпан бесплатный лимит базы на сегодня. Попробуйте позже.";
   if (c.includes("unavailable")) return "Нет связи с базой. Проверьте интернет.";
+  if (c === "room-missing") return "Кабинет уже удалён. Выберите другой кабинет.";
+  if (c === "shift-missing-size") return "Смена осталась открытой: у одной из отметок отсутствует размер окна. Обратитесь к руководителю.";
+  if (c === "pending-writes") return "Дождитесь синхронизации с базой и повторите.";
   return "Не удалось сохранить. Проверьте интернет и повторите.";
 }
 
@@ -251,6 +254,12 @@ function docApi(ref){
     id: ref.id, path: ref.path,
     get: async () => wrapDoc(await F.getDoc(ref)),
     set: d => F.setDoc(ref, d), update: d => F.updateDoc(ref, d), delete: () => F.deleteDoc(ref),
+    addFloor: floor => F.updateDoc(ref, {floors: F.arrayUnion(floor)}),
+    changeItems: changes => F.runTransaction(fs, async tx => {
+      const d = await tx.get(ref);
+      if (!d.exists()) throw {code: "room-missing"};
+      tx.update(ref, roomItemsPatch(d.data(), changes));
+    }),
     onSnapshot: (n, e) => F.onSnapshot(ref, {includeMetadataChanges: true}, d => n(wrapDoc(d)), e),
     collection: p => colApi(F.collection(ref, p)),
   };
@@ -275,8 +284,14 @@ rep('''  const ref = db.collection(objPath() + "/log").doc();
   const ref = db.collection(objPath() + "/log").doc();
   const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};
   if (myShift) entry.shift = myShift.id;''')
-rep('''  try { await ref.set(entry); if (!opt.silent)''','''  scheduleShiftWork();
-  try { await ref.set(entry); if (!opt.silent)''')
+rep('''  if (!q) return;
+  if (kind === "glue"''','''  if (!q) return;
+  if (closingShift) { toast("Дождитесь закрытия смены"); return; }
+  if (kind === "glue"''')
+rep('''  try { await ref.set(entry); if (!opt.silent)''','''  pendingMarks++;
+  try { await ref.set(entry); scheduleShiftWork(); if (!opt.silent)''')
+rep('''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }''','''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
+  finally { pendingMarks--; }''')
 
 rep('''async function resolveNames(){
   if (!user || !user.profiles) return;
@@ -286,31 +301,36 @@ rep('''async function resolveNames(){
 }''','''function resolveNames(){ /* имена приходят из профилей сотрудников */ }''')
 
 # createType via transaction
-i=s.index('async function createType(w, h){'); j=s.index('function addToRoom(')
-s=s[:i]+'''async function createType(w, h){
+i=s.index('async function createType(w, h){'); j=s.index('async function addToRoom(')
+s=s[:i]+'''async function createType(w, h, oid, roomAtStart){
   // буква — по этажу текущего кабинета; номер — следующий свободный для этой буквы.
   // «Бронь» кода (types/c_B3) не даёт двум замерщикам одновременно взять один и тот же код.
-  const L = floorLetter((room() || {}).floor ?? curFloor ?? "1");
+  const L = floorLetter(roomAtStart.floor);
+  const path = "objects/" + oid, roomRef = F.doc(fs, path + "/rooms/" + roomAtStart.id);
   let n = Math.max(0, ...Object.keys(types).map(Number)) + 1, i = nextIndex(L);
   for (let tries = 0; tries < 30; tries++) {
-    const ref = F.doc(fs, objPath() + "/types/n" + n), claim = F.doc(fs, objPath() + "/types/c_" + L + i);
+    const ref = F.doc(fs, path + "/types/n" + n), claim = F.doc(fs, path + "/types/c_" + L + i);
     const body = {num: n, w, h, L, i, created: Date.now()};
-    try {
-      const r = await F.runTransaction(fs, async tx => {
-        const d = await tx.get(ref), c = await tx.get(claim);
-        if (d.exists()) return "n"; if (c.exists()) return "i";
-        tx.set(claim, {code: L + i, n}); tx.set(ref, body); return "ok";
-      });
-      if (r === "n") { n++; continue; }
-      if (r === "i") { i++; continue; }
-    } catch(e) {
-      if (String(e && e.code).includes("permission")) throw e;
-      F.setDoc(ref, body).catch(() => {});   // нет связи: запишется, когда появится интернет
-    }
-    types[n] = {num: n, w, h, L, i};
-    return n;
+    const result = await F.runTransaction(fs, async tx => {
+      const d = await tx.get(ref);
+      const existing = d.data();
+      if (d.exists() && (existing.w !== w || existing.h !== h)) return {conflict: "number"};
+      const c = d.exists() ? null : await tx.get(claim);
+      if (c && c.exists()) return {conflict: "code"};
+      const target = await tx.get(roomRef);
+      if (!target.exists()) throw {code: "room-missing"};
+      if (c) {
+        tx.set(claim, {code: L + i, n});
+        tx.set(ref, body);
+      }
+      tx.update(roomRef, roomItemsPatch(target.data(), {[n]: 1}));
+      return {label: existing ? (existing.L && existing.i ? existing.L + existing.i : "№" + n) : L + i};
+    });
+    if (result.conflict === "number") { n++; continue; }
+    if (result.conflict === "code") { i++; continue; }
+    return result.label;
   }
-  throw {code: "unavailable"};
+  throw {code: "aborted"};
 }
 
 '''+s[j:]

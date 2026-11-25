@@ -41,17 +41,30 @@ async function objTypes(oid){
   const t = {}; (await F.getDocs(F.collection(fs, `objects/${oid}/types`))).forEach(d => { const v = d.data(); if (v && v.num) t[v.num] = v; });
   return typesCache[oid] = t;
 }
-async function loadShiftWork(s){
+async function loadShiftWork(s, fresh = false){
   const res = {cut: 0, glue: 0};
-  for (const o of objects) {
-    const q = await F.getDocs(F.query(F.collection(fs, `objects/${o.id}/log`), F.where("shift", "==", s.id)));
+  const read = fresh ? readConfirmedDocs : F.getDocs;
+  const list = fresh ? (await read(F.collection(fs, "objects"))).docs : objects;
+  for (const o of list) {
+    const q = await read(F.query(F.collection(fs, `objects/${o.id}/log`), F.where("shift", "==", s.id)));
     if (q.empty) continue;
-    const t = await objTypes(o.id);
-    q.forEach(d => { const x = d.data(), tp = t[x.num]; if (tp && x.kind in res) res[x.kind] += x.q * tp.w * tp.h / 10000; });
+    const t = fresh
+      ? Object.fromEntries((await read(F.collection(fs, `objects/${o.id}/types`))).docs.map(d => d.data()).filter(v => v.num).map(v => [v.num, v]))
+      : await objTypes(o.id);
+    q.forEach(d => {
+      const x = d.data(), tp = t[x.num];
+      if (fresh && (!tp || !Number.isFinite(tp.w * tp.h))) throw {code: "shift-missing-size"};
+      if (tp && x.kind in res) res[x.kind] += x.q * tp.w * tp.h / 10000;
+    });
   }
   res.cut = Math.max(0, res.cut); res.glue = Math.max(0, res.glue);
   shiftWork[s.id] = res;
   return res;
+}
+async function readConfirmedDocs(ref){
+  const snap = await F.getDocsFromServer(ref);
+  if (snap.metadata.hasPendingWrites) throw {code: "pending-writes"};
+  return snap;
 }
 let swTimer = null;
 function scheduleShiftWork(delay = 1500){
@@ -103,14 +116,19 @@ async function openShift(){
   try { await F.setDoc(ref, body); toast("Смена открыта — можно работать"); }
   catch(e) { toast(String(e.code).includes("permission") ? "Не удалось открыть смену. Возможно, владелец ещё не указал цены." : errMsg(e)); }
 }
+let closingShift = false, pendingMarks = 0;
 async function closeShift(){
-  const s = myShift; if (!s) return;
+  const s = myShift; if (!s || closingShift) return;
+  if (pendingMarks) { toast("Дождитесь сохранения отметок и закройте смену снова."); return; }
+  closingShift = true;
   try {
-    const w = await loadShiftWork(s);
-    const sum = Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100;
-    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea: Math.round(w.cut * 10000) / 10000, glueArea: Math.round(w.glue * 10000) / 10000, sum});
+    const w = await loadShiftWork(s, true);
+    const cutArea = Math.round(w.cut * 10000) / 10000, glueArea = Math.round(w.glue * 10000) / 10000;
+    const sum = Math.round((cutArea * s.priceCut + glueArea * s.priceGlue) * 100) / 100;
+    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea, glueArea, sum});
     toast("Смена закрыта");
   } catch(e) { toast(errMsg(e)); }
+  finally { closingShift = false; }
 }
 
 function shiftStats(s){
@@ -318,24 +336,34 @@ function renderAdmin(){
   const bk = el("button", {className: "sec", textContent: "Скачать копию базы"});
   bk.onclick = downloadBackup;
   box.append(el("div", {className: "card"}, el("h2", {textContent: "Резервная копия"}),
-    el("div", {className: "empty", textContent: "Скачивает все данные (объекты, окна, кабинеты, отметки, смены, сотрудников) одним файлом. Сохраняйте его, например, раз в неделю."}), bk));
+    el("div", {className: "empty", textContent: "Скачивает рабочие данные из Firestore. Учётные записи Firebase и личные настройки сюда не входят."}), bk));
 }
 
+let exportingBackup = false;
 async function downloadBackup(){
+  if (exportingBackup) return;
+  exportingBackup = true;
   toast("Собираю копию…");
+  let path = "config/owner";
   try {
-    // если какой-то раздел прочитать не удалось, копия всё равно скачается, а в файле будет пометка
-    const skipped = [];
-    const grab = async path => { try { const r = {}; (await F.getDocs(F.collection(fs, path))).forEach(d => r[d.id] = d.data()); return r; } catch(e) { skipped.push(path); return {}; } };
-    const out = {exportedAt: new Date().toISOString(), config: {owner: (await F.getDoc(F.doc(fs, "config/owner"))).data() || null}, settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
-    for (const o of (await F.getDocs(F.collection(fs, "objects"))).docs)
-      out.objects[o.id] = {data: o.data(), types: await grab(`objects/${o.id}/types`), rooms: await grab(`objects/${o.id}/rooms`), log: await grab(`objects/${o.id}/log`)};
-    if (skipped.length) out.skipped = skipped;
+    const grab = async name => {
+      path = name;
+      const snap = await readConfirmedDocs(F.collection(fs, name));
+      return Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    };
+    const owner = await F.getDocFromServer(F.doc(fs, path));
+    if (owner.metadata.hasPendingWrites) throw {code: "pending-writes"};
+    const out = {exportedAt: new Date().toISOString(), config: {owner: owner.data() || null}, settings: await grab("settings"), users: await grab("users"), rates: await grab("rates"), shifts: await grab("shifts"), objects: {}};
+    for (const [id, data] of Object.entries(await grab("objects")))
+      out.objects[id] = {data, types: await grab(`objects/${id}/types`), rooms: await grab(`objects/${id}/rooms`), log: await grab(`objects/${id}/log`)};
     const blob = new Blob([JSON.stringify(out, null, 1)], {type: "application/json"});
-    const a = el("a", {href: URL.createObjectURL(blob), download: `zamery-kopiya-${new Date().toISOString().slice(0, 10)}.json`});
+    const url = URL.createObjectURL(blob);
+    const a = el("a", {href: url, download: `zamery-kopiya-${new Date().toISOString().slice(0, 10)}.json`});
     document.body.append(a); a.click(); a.remove();
-    toast(skipped.length ? `Копия скачана, но без разделов: ${skipped.join(", ")} — проверьте, что вставлены последние правила в Firebase` : "Копия скачана");
-  } catch(e) { toast("Не удалось собрать копию: " + errMsg(e)); }
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Копия скачана");
+  } catch(e) { toast(`Не удалось прочитать ${path}. ${errMsg(e)}`); }
+  finally { exportingBackup = false; }
 }
 
 
