@@ -32,10 +32,12 @@ service cloud.firestore {
       return r != null ? r : priceDoc().get(k, 0);
     }
 
-    // Смена принадлежит тому, кто делает запрос
-    function ownShift(sid) {
+    // Отметка относится к открытой смене текущего сотрудника.
+    function ownOpenShift(sid) {
       let p = /databases/$(database)/documents/shifts/$(sid);
-      return sid is string && exists(p) && get(p).data.uid == request.auth.uid;
+      return sid is string && exists(p)
+        && get(p).data.uid == request.auth.uid && get(p).data.end == null
+        && getAfter(p).data.end == null;
     }
     // Сумма смены должна совпадать с «площадь × цена» (допуск 1 ₽ на округление)
     function sumMatches(d) {
@@ -108,7 +110,7 @@ service cloud.firestore {
         allow delete: if isManager();
       }
       // Отметки нарезки и оклейки: только своим именем, только с нужным правом,
-      // разумное количество и только в свою смену; изменить нельзя
+      // разумное количество и только в свою открытую смену; владелец может работать без смены
       match /log/{l} {
         allow read: if approved();
         allow create: if request.resource.data.kind in ['cut', 'glue']
@@ -116,7 +118,7 @@ service cloud.firestore {
           && request.resource.data.by == request.auth.uid
           && request.resource.data.q is int
           && request.resource.data.q >= -500 && request.resource.data.q <= 500
-          && (!('shift' in request.resource.data) || ownShift(request.resource.data.shift));
+          && (('shift' in request.resource.data) ? ownOpenShift(request.resource.data.shift) : isOwner());
         allow delete: if isManager();
       }
     }
