@@ -54,7 +54,30 @@ rep('<main>','''<div id="authView" class="authwrap hidden">
     <button class="sec" id="waitLogout">Выйти</button>
   </div>
 </div>
-<div id="loadView" class="authwrap"><div class="empty">Загрузка…</div></div>
+<div id="loadView" class="authwrap"><div class="card authcard">
+  <div class="empty" id="loadMessage" role="status">Загрузка…</div>
+  <button id="loadRetry" class="sec hidden" type="button">Повторить</button>
+</div></div>
+<script>
+(function(){
+  var panel = document.getElementById("loadView"), message = document.getElementById("loadMessage");
+  var retry = document.getElementById("loadRetry"), timer;
+  function stalled(){
+    if (panel.classList.contains("hidden")) return;
+    message.textContent = "Не удалось завершить загрузку. Проверьте соединение и попробуйте ещё раз.";
+    retry.classList.remove("hidden");
+  }
+  window.watchAppLoad = function(loading){
+    clearTimeout(timer);
+    if (loading && retry.classList.contains("hidden")) timer = setTimeout(stalled, 12000);
+  };
+  retry.onclick = function(){ location.reload(); };
+  window.addEventListener("error", function(e){
+    if (e.target && e.target.tagName === "SCRIPT" && e.target.type === "module") stalled();
+  }, true);
+  window.watchAppLoad(true);
+})();
+</script>
 <main id="app" class="hidden">''')
 rep('''  <button class="navitem" data-tab="summary">Сводка</button>
   <div class="navsep"></div>

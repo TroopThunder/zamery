@@ -289,7 +289,7 @@ const logout = async () => { try { await A.signOut(auth); } catch(e) {} location
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
 
 /* ---------- запуск ---------- */
-function view(name){ for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
+function view(name){ window.watchAppLoad(name === "loadView"); for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
 let gsubs = [], dataStarted = false, ownerKnown = false, meKnown = false, startedAsManager = false, emailCheckStarted = false;
 
 function gate(){
@@ -364,7 +364,7 @@ function startData(){
 }
 
 if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
-  view("loadView"); $("loadView").firstElementChild.textContent = "Сайт ещё не подключён к Firebase: не указаны ключи проекта.";
+  view("loadView"); $("loadMessage").textContent = "Сайт ещё не подключён к Firebase: не указаны ключи проекта.";
 } else {
   const fapp = initializeApp(FIREBASE_CONFIG);
   auth = A.getAuth(fapp);

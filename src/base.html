@@ -265,7 +265,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   </section>
 </main>
 <div class="backdrop hidden" id="backdrop"></div>
-<nav id="drawer" aria-label="Разделы" aria-hidden="true">
+<nav inert id="drawer" aria-label="Разделы" aria-hidden="true">
   <div class="drawer-head">
     <div class="drawer-brand">
       <img class="brand-icon-light" src="__BRAND_ICON_LIGHT__" width="120" height="116" alt="">
@@ -1000,8 +1000,34 @@ function showTab(name){
   try { localStorage.setItem("zamery-tab", name); } catch(e) {}
   window.scrollTo(0, 0);
 }
-function openMenu(){ $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); $("backdrop").classList.remove("hidden"); $("menuBtn").setAttribute("aria-expanded", "true"); }
-function closeMenu(){ $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); $("backdrop").classList.add("hidden"); $("menuBtn").setAttribute("aria-expanded", "false"); }
+function openMenu(){
+  const drawer = $("drawer");
+  drawer.removeAttribute("inert");
+  drawer.setAttribute("aria-hidden", "false");
+  drawer.classList.add("open");
+  $("backdrop").classList.remove("hidden");
+  $("menuBtn").setAttribute("aria-expanded", "true");
+  $("menuClose").focus();
+  $("app").setAttribute("inert", "");
+}
+function closeMenu(){
+  const drawer = $("drawer");
+  if (!drawer.classList.contains("open")) return;
+  $("app").removeAttribute("inert");
+  $("menuBtn").setAttribute("aria-expanded", "false");
+  $("menuBtn").focus();
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  drawer.setAttribute("inert", "");
+  $("backdrop").classList.add("hidden");
+}
+$("drawer").addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const buttons = Array.from($("drawer").querySelectorAll("button:not(:disabled)")).filter(b => b.getClientRects().length);
+  const first = buttons[0], last = buttons[buttons.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 $("menuBtn").onclick = openMenu; $("menuClose").onclick = closeMenu; $("backdrop").onclick = closeMenu;
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 document.querySelectorAll("#drawer .navitem[data-tab]").forEach(b => b.onclick = () => { showTab(b.dataset.tab); closeMenu(); });

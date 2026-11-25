@@ -322,6 +322,6 @@ function applyTabAccess(){
   const none = !["measure", "cut", "glue", "admin"].some(t => vis[t]);
   $("objCard").classList.toggle("hidden", !(vis.measure || vis.cut || vis.glue || vis.summary));
   let note = $("noAccessNote");
-  if (none && !note) { note = el("div", {className: "notice", id: "noAccessNote", textContent: "Вам пока не выданы разделы для работы. Попросите владельца отметить ваши права в «Управлении». Сейчас доступны только настройки."}); $("meRow").after(note); }
+  if (none && !note) { note = el("div", {className: "notice", id: "noAccessNote", textContent: "Вам пока не выданы разделы для работы. Попросите владельца отметить ваши права в «Управлении». Сейчас доступны разделы «Настройки» и «Аккаунт»."}); $("meRow").after(note); }
   if (!none && note) note.remove();
 }
