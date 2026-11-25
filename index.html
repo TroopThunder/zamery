@@ -494,7 +494,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 01:09</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 01:14</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -2043,14 +2043,14 @@ function whereList(n){
 let editingType = null;
 function renderTypes(c){
   const body = $("typesBody"); body.innerHTML = "";
-  const tlist = Object.values(types).sort(byType);
+  const tlist = Object.values(types).filter(t => c[t.num] > 0).sort(byType);
   if (!tlist.length) { body.append(el("div", {className: "empty", textContent: "Окон пока нет."})); return; }
   for (const t of tlist) {
-    const q = c[t.num] || 0, area = t.w * t.h / 10000;
+    const q = c[t.num], area = t.w * t.h / 10000;
     const row = el("div", {className: "prow"},
       el("div", {className: "row"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)} см`}),
         el("span", {className: "grow"}), el("span", {className: "pill", textContent: `${q} шт · ${m2(area * q)} м²`})),
-      el("div", {className: "where", textContent: q ? whereList(t.num) : "Пока ни в одном кабинете"}));
+      el("div", {className: "where", textContent: whereList(t.num)}));
     if (typeof canEditTypes === "function" ? canEditTypes() : allowed("measure")) {
       if (editingType === t.num) {
         const w = el("input", {value: cm(t.w), inputMode: "decimal", id: `ew-${t.num}`, ariaLabel: "Ширина, см"});
@@ -2066,11 +2066,8 @@ function renderTypes(c){
         row.append(el("div", {className: "grid2"}, el("div", {}, el("label", {htmlFor: w.id, textContent: "Ширина, см"}), w), el("div", {}, el("label", {htmlFor: h.id, textContent: "Высота, см"}), h)),
           el("div", {className: "row"}, ok, cancel));
       } else {
-        const act = el("div", {className: "row"});
         const ed = el("button", {className: "link", textContent: "Изменить размер"}); ed.onclick = () => { editingType = t.num; render(); };
-        act.append(ed);
-        if (!q) { const del = el("button", {className: "link", textContent: "Удалить"}); del.onclick = () => confirmTap(del, async () => { try { await db.doc(objPath() + "/types/n" + t.num).delete(); } catch(e) { toast(errMsg(e)); } }); act.append(del); }
-        row.append(act);
+        row.append(el("div", {className: "row"}, ed));
       }
     }
     body.append(row);
