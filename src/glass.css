@@ -17,6 +17,10 @@ html.glass .card,html.glass .tabs,html.glass .topbar,html.glass #drawer,html.gla
 html.glass .topbar{border-radius:14px;padding:6px 8px;margin:0 -8px;border:1px solid var(--glass-edge)}
 html.glass #drawer{background:rgba(var(--glass-tint),calc(var(--glass-alpha) + .08))}
 html.glass .backdrop{background:rgba(10,14,18,.25);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html.glass .window-added{background:rgba(var(--glass-tint),calc(.69 + var(--glass-alpha) * .3));border-color:var(--glass-edge)}
+  html.glass .window-added::backdrop{background:rgba(10,14,18,.28);-webkit-backdrop-filter:blur(calc(var(--glass-blur) * .45));backdrop-filter:blur(calc(var(--glass-blur) * .45))}
+}
 /* мелкие элементы внутри панелей: только прозрачность (так быстрее на телефоне) */
 html.glass input,html.glass select,html.glass .chip,html.glass .type,html.glass .member .chips label{
   background:rgba(var(--glass-field),calc(var(--glass-alpha) * .8));border-color:var(--glass-edge)}

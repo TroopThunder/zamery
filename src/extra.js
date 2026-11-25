@@ -7,9 +7,8 @@ function afterRender(){
   applyTabAccess();
   const m = allowed("measure");
   // без права «Замер» не показываем поля ввода и кнопки, которые всё равно не работают
-  $("inW").closest(".row").classList.toggle("hidden", !m);
-  $("copyFrom").closest(".row").classList.toggle("hidden", !m);
-  $("typeButtons").closest(".card").classList.toggle("hidden", !m);
+  $("roomTools").classList.toggle("hidden", !m || !room());
+  $("sizeCatalog").classList.toggle("hidden", !m || !room());
   if (!m) document.querySelectorAll("#roomItems .qty button").forEach(b => b.remove());
   $("roomRename").classList.toggle("hidden", !m || !room());
   $("objRename").classList.toggle("hidden", !m || !curObj);
@@ -52,7 +51,7 @@ function renderRoomSearch(){
   if (!found.length) { res.append(el("div", {className: "empty", textContent: "Кабинет не найден"})); return; }
   for (const r of found) {
     const b = el("button", {className: "chip", textContent: `${r.name} · ${r.floor} эт.`});
-    b.onclick = () => { curFloor = r.floor; curRoomId = r.id; roomQuery = ""; $("roomSearch").value = ""; hideMatch(); render(); $("roomCard").scrollIntoView({block: "start"}); };
+    b.onclick = () => { curFloor = r.floor; roomQuery = ""; $("roomSearch").value = ""; selectMeasureRoom(r.id); };
     res.append(b);
   }
 }

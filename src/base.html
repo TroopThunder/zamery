@@ -71,9 +71,27 @@ button:disabled{opacity:.45;cursor:default}
 .tag.wait{background:var(--bg);color:var(--muted)}
 .gitem button.sec{padding:8px 10px}
 .legend{display:flex;gap:8px;flex-wrap:wrap}
-.topbar{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:3;background:var(--bg);padding:6px 0}
+.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;position:sticky;top:0;z-index:3;background:var(--bg);padding:6px 0}
 .apptitle{font-size:12px;color:var(--muted)}
 .topbar h1{margin:0;font-size:20px}
+#measureLocation{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;padding:8px 12px;background:var(--accent-soft);color:var(--ink);text-align:left;font-weight:500;overflow-wrap:anywhere}
+#measureLocation svg{flex:none}
+#measureLocation[aria-expanded="true"] svg{transform:rotate(180deg)}
+.measure-compact #objCard,.measure-compact #roomChooser{display:none}
+#roomSizeForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#roomSizeForm input{width:100%}
+#roomTitle{overflow-wrap:anywhere}
+#addSize{grid-column:1/-1;min-height:44px}
+.measure-tools summary{cursor:pointer;color:var(--accent);padding:8px 0}
+.measure-tools[open] summary{margin-bottom:6px}
+#recentTypes .chip{min-height:44px}
+.window-added{width:min(340px, calc(100% - 32px));max-height:calc(100% - 32px);padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 12px 36px rgba(10,14,18,.2);text-align:center}
+.window-added::backdrop{background:rgba(10,14,18,.4)}
+.window-added-content{display:grid;justify-items:center;gap:8px}
+.window-added-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:var(--accent-soft);color:var(--accent)}
+.window-added-code{font:600 30px/1.2 var(--mono);overflow-wrap:anywhere;max-width:100%}
+.window-added form{width:100%}
+.window-added button{width:100%;min-height:44px;margin-top:6px}
 .iconbtn{background:var(--surface);color:var(--ink);border:1px solid var(--line);width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:12px}
 .backdrop{position:fixed;inset:0;background:rgba(10,14,18,.45);z-index:9}
 #drawer{position:fixed;top:0;left:0;bottom:0;width:min(280px,82vw);background:var(--surface);border-right:1px solid var(--line);z-index:10;transform:translateX(-102%);display:flex;flex-direction:column;gap:2px;padding:12px;overflow-y:auto}
@@ -155,6 +173,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
     <div class="grow"><div class="apptitle">GlixPro master</div><h1 id="pageTitle">Замер</h1></div>
+    <button type="button" id="measureLocation" class="hidden" aria-controls="objCard roomChooser" aria-expanded="false">
+      <span></span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </header>
   <div class="row" id="meRow"><span id="meChip" class="pill">Загружаю профиль…</span></div>
   <div class="card hidden" id="teamCard">
@@ -187,8 +208,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <!-- ===== ЗАМЕР ===== -->
   <section id="tab-measure" class="col" style="display:flex;flex-direction:column;gap:12px">
     <div class="notice hidden" id="measureRO">У вас нет прав на замеры — только просмотр. Права выдаёт владелец.</div>
-    <div class="card">
-      <input id="roomSearch" placeholder="Найти кабинет по номеру" autocomplete="off" inputmode="search">
+    <div class="card" id="roomChooser">
+      <input id="roomSearch" aria-label="Найти кабинет по номеру" placeholder="Найти кабинет по номеру" autocomplete="off" inputmode="search">
       <div class="chips" id="roomSearchRes"></div>
       <h2>Этаж</h2>
       <div class="chips" id="floorChips"></div>
@@ -203,37 +224,47 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
         <input id="roomNewName" class="grow" placeholder="Номер кабинета, например 205">
         <button id="roomCreate">Добавить</button>
       </div>
-      <div class="notice hidden" id="renameBox" style="display:flex;flex-direction:column;gap:8px">
-        <label for="renameInput" id="renameLabel"></label>
-        <input id="renameInput" autocomplete="off">
-        <div class="row"><button id="renameGo">Сохранить</button><button class="sec" id="renameCancel">Отмена</button></div>
+    </div>
+    <div class="notice hidden" id="renameBox" style="display:flex;flex-direction:column;gap:8px">
+      <label for="renameInput" id="renameLabel"></label>
+      <input id="renameInput" autocomplete="off">
+      <div class="row"><button id="renameGo">Сохранить</button><button class="sec" id="renameCancel">Отмена</button></div>
+    </div>
+    <div class="card hidden" id="roomCard">
+      <h2 id="roomTitle">Кабинет</h2>
+      <div id="roomSizeForm">
+        <div><label for="inW">Ширина, см</label><input id="inW" inputmode="decimal" autocomplete="off"></div>
+        <div><label for="inH">Высота, см</label><input id="inH" inputmode="decimal" autocomplete="off"></div>
+        <button id="addSize">Добавить окно</button>
       </div>
+      <div id="matchBox" class="hidden"></div>
     </div>
 
-    <div class="card" id="roomCard">
-      <div class="row"><h2 class="grow" id="roomTitle">Выберите кабинет</h2><button class="link hidden" id="roomRename">Переименовать</button><button class="link" id="roomDel">Удалить кабинет</button></div>
+    <div class="card hidden" id="roomList">
+      <h2>Окна в кабинете</h2>
       <div class="items" id="roomItems"></div>
+    </div>
 
-      <div class="row" style="align-items:flex-end">
-        <div class="grow"><label for="inW">Ширина, см</label><input id="inW" inputmode="decimal" autocomplete="off" style="width:100%"></div>
-        <div class="grow"><label for="inH">Высота, см</label><input id="inH" inputmode="decimal" autocomplete="off" style="width:100%"></div>
-        <button id="addSize">Добавить</button>
-      </div>
-      <div class="empty" id="codeHint"></div>
-      <div id="matchBox" class="hidden"></div>
+    <div class="card hidden" id="recentSizes">
+      <h2>Недавние размеры</h2>
+      <div class="chips" id="recentTypes"></div>
+    </div>
 
+    <details class="card measure-tools" id="sizeCatalog">
+      <summary>Все размеры объекта</summary>
+      <div class="empty" id="typesHint">Нажмите на окно, чтобы добавить его в кабинет.</div>
+      <div class="types" id="typeButtons"></div>
+    </details>
+
+    <details class="card measure-tools hidden" id="roomTools">
+      <summary>Действия с кабинетом</summary>
       <div class="row">
         <label for="copyFrom">Скопировать окна из кабинета</label>
         <select id="copyFrom" class="grow"></select>
         <button class="sec" id="copyBtn">Скопировать</button>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Уже записанные окна</h2>
-      <div class="empty" id="typesHint">Нажмите на окно, чтобы добавить его в кабинет.</div>
-      <div class="types" id="typeButtons"></div>
-    </div>
+      <div class="row"><button class="link hidden" id="roomRename">Переименовать</button><button class="link" id="roomDel">Удалить кабинет</button></div>
+    </details>
   </section>
 
   <!-- ===== ОКНА ===== -->
@@ -264,6 +295,15 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <div class="card" id="summaryFloors"></div>
   </section>
 </main>
+<dialog id="windowAdded" class="window-added" aria-labelledby="windowAddedTitle" aria-describedby="windowAddedCode windowAddedSize">
+  <div class="window-added-content">
+    <span class="window-added-mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <h2 id="windowAddedTitle">Окно добавлено</h2>
+    <div class="window-added-code" id="windowAddedCode"></div>
+    <div class="size" id="windowAddedSize"></div>
+    <form method="dialog"><button autofocus>ОК</button></form>
+  </div>
+</dialog>
 <div class="backdrop hidden" id="backdrop"></div>
 <nav inert id="drawer" aria-label="Разделы" aria-hidden="true">
   <div class="drawer-head">
@@ -334,6 +374,7 @@ let objects = [], curObj = null;
 let types = {};          // num -> {num, w, h}
 let rooms = [];          // {id, floor, name, items:{num:count}}
 let curFloor = null, curRoomId = null;
+let roomChooserOpen = false;
 let unsubs = [];
 let typesLoaded = false, roomsLoaded = false;
 let log = [];            // {id, kind:"cut"|"glue", num, q, by, at}
@@ -400,6 +441,9 @@ function roomItemsPatch(data, changes){
 function openObject(id){
   unsubs.forEach(u => u()); unsubs = [];
   curObj = id; types = {}; rooms = []; log = []; curFloor = null; curRoomId = null; typesLoaded = roomsLoaded = false;
+  roomChooserOpen = false;
+  hideMatch();
+  $("renameBox").classList.add("hidden");
   try { localStorage.setItem("zamery-obj", id || ""); } catch(e) {}
   render();
   if (!id) return;
@@ -735,6 +779,18 @@ async function addToRoom(n, q = 1){
 
 /* ---------- ввод размера ---------- */
 let sizeSaving = false;
+const recentWindowCodes = new Map();
+function showWindowAdded(oid, rid, label, w, h){
+  const recent = recentWindowCodes.get(oid) || [];
+  recentWindowCodes.set(oid, [label, ...recent.filter(code => code !== label)].slice(0, 4));
+  if (curObj !== oid || curRoomId !== rid || $("tab-measure").classList.contains("hidden") || $("drawer").classList.contains("open")) {
+    toast(`Добавлено: ${label}`);
+    return;
+  }
+  $("windowAddedCode").textContent = label;
+  $("windowAddedSize").textContent = w > 0 && h > 0 ? `${cm(w)} × ${cm(h)} см` : "";
+  $("windowAdded").showModal();
+}
 async function onAddSize(){
   if (sizeSaving) return;
   hideMatch();   // старая подсказка «похоже на…» больше не нужна
@@ -755,20 +811,20 @@ async function addNew(w, h){
   render();
   try {
     const label = await createType(w, h, oid, r);
-    toast(`Добавлено: ${label} (${cm(w)}×${cm(h)})`);
     if (curObj === oid && curRoomId === r.id) clearInputs();
+    showWindowAdded(oid, r.id, label, w, h);
   } catch(e) { toast(errMsg(e)); }
   finally { sizeSaving = false; render(); }
 }
-async function addKnownSize(n){
-  if (sizeSaving) return;
-  const oid = curObj, rid = curRoomId, label = code(n);
+async function addKnownSize(n, clearDraft = true){
+  if (sizeSaving || $("windowAdded").open) return;
+  const oid = curObj, rid = curRoomId, label = code(n), t = types[n];
   sizeSaving = true;
   render();
   try {
     if (await addToRoom(n)) {
-      toast(`Добавлено: ${label}`);
-      if (curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
+      if (clearDraft && curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
+      showWindowAdded(oid, rid, label, t?.w, t?.h);
     }
   } finally { sizeSaving = false; render(); }
 }
@@ -791,7 +847,30 @@ function showMatch(w, h, near){
   row.append(nb); box.append(row);
 }
 function hideMatch(){ $("matchBox").className = "hidden"; $("matchBox").innerHTML = ""; }
-function clearInputs(){ $("inW").value = ""; $("inH").value = ""; $("inW").focus(); }
+function clearInputs(){ $("inW").value = ""; $("inH").value = ""; }
+
+function renderMeasureLocation(){
+  const r = room(), button = $("measureLocation");
+  const visible = !!r && !$("tab-measure").classList.contains("hidden");
+  button.classList.toggle("hidden", !visible);
+  document.documentElement.classList.toggle("measure-compact", visible && !roomChooserOpen);
+  if (!visible) return;
+  const objectName = objects.find(o => o.id === curObj)?.name;
+  button.firstElementChild.textContent = [objectName, `${r.floor} этаж`, `Каб. ${r.name}`].filter(Boolean).join(" · ");
+  button.setAttribute("aria-expanded", String(roomChooserOpen));
+}
+
+function selectMeasureRoom(id){
+  curRoomId = id;
+  roomChooserOpen = false;
+  $("renameBox").classList.add("hidden");
+  $("roomTools").open = false;
+  hideMatch();
+  render();
+  window.scrollTo(0, 0);
+  const target = $("inW").disabled ? $("measureLocation") : $("inW");
+  target.focus({preventScroll: true});
+}
 
 /* ---------- отрисовка ---------- */
 function el(tag, props = {}, ...kids){ const e = document.createElement(tag); Object.assign(e, props); for (const k of kids) e.append(k); return e; }
@@ -828,7 +907,10 @@ function renderAll(){
   for (const f of fl) {
     const b = el("button", {className: "chip", textContent: f + " этаж"});
     b.setAttribute("aria-pressed", f === curFloor);
-    b.onclick = () => { curFloor = f; curRoomId = null; render(); };
+    b.onclick = () => {
+      curFloor = f; curRoomId = null;
+      hideMatch(); $("renameBox").classList.add("hidden"); render();
+    };
     fc.append(b);
   }
   if (allowed("measure")) { const a = el("button", {className: "chip add", textContent: "+ этаж"}); a.onclick = () => { $("floorNewRow").classList.toggle("hidden"); $("floorNewName").focus(); }; fc.append(a); }
@@ -840,7 +922,7 @@ function renderAll(){
     const total = Object.values(r.items).reduce((s, q) => s + q, 0);
     const b = el("button", {className: "chip", textContent: `${r.name}${total ? " · " + total : ""}`});
     b.setAttribute("aria-pressed", r.id === curRoomId);
-    b.onclick = () => { curRoomId = r.id; hideMatch(); render(); $("inW").focus(); };
+    b.onclick = () => selectMeasureRoom(r.id);
     rc.append(b);
   }
   if (curFloor !== null && allowed("measure")) { const a = el("button", {className: "chip add", textContent: "+ кабинет"}); a.onclick = () => { $("roomNewRow").classList.toggle("hidden"); $("roomNewName").focus(); }; rc.append(a); }
@@ -848,7 +930,10 @@ function renderAll(){
 
   // текущий кабинет
   const r = room();
-  $("roomTitle").textContent = r ? `Кабинет ${r.name}, ${r.floor} этаж` : "Выберите кабинет";
+  renderMeasureLocation();
+  $("roomTitle").textContent = r ? `Кабинет ${r.name}` : "Кабинет";
+  $("roomCard").classList.toggle("hidden", !r || !allowed("measure"));
+  $("roomList").classList.toggle("hidden", !r);
   $("roomDel").classList.toggle("hidden", !r || !allowed("measure"));
   const ri = $("roomItems"); ri.innerHTML = "";
   if (r) {
@@ -857,7 +942,7 @@ function renderAll(){
     for (const n of nums) {
       const t = types[n];
       const minus = el("button", {textContent: "−", ariaLabel: "Убрать одно"}); minus.onclick = () => addToRoom(n, -1); minus.disabled = !allowed("measure");
-      const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addToRoom(n, 1); plus.disabled = !allowed("measure");
+      const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addKnownSize(n, false); plus.disabled = sizeSaving || !allowed("measure");
       ri.append(el("div", {className: "item"},
         el("span", {className: "code", textContent: code(n)}),
         el("span", {className: "size", textContent: t ? `${cm(t.w)}×${cm(t.h)}` : "…"}),
@@ -865,7 +950,6 @@ function renderAll(){
     }
   }
   for (const id of ["inW", "inH", "addSize"]) $(id).disabled = sizeSaving || !r || !allowed("measure");
-  $("codeHint").textContent = r ? `Новые размеры на этом этаже получат коды ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor))}, ${floorLetter(r.floor)}${nextIndex(floorLetter(r.floor)) + 1}… Уже записанный размер (с любого этажа, разница до 5 мм) — тот же код.` : "";
 
   // копирование
   const cf = $("copyFrom"); const prev = cf.value; cf.innerHTML = "";
@@ -877,11 +961,21 @@ function renderAll(){
   const tb = $("typeButtons"); tb.innerHTML = "";
   const c = counts();
   const tlist = Object.values(types).sort(byType);
+  const byLabel = new Map(tlist.map(t => [code(t.num), t]));
+  const recent = (recentWindowCodes.get(curObj) || []).map(label => byLabel.get(label)).filter(Boolean);
+  const recentTypes = $("recentTypes");
+  recentTypes.replaceChildren();
+  $("recentSizes").classList.toggle("hidden", !r || !allowed("measure") || !recent.length);
+  for (const t of recent) {
+    const b = el("button", {className: "chip", disabled: sizeSaving, textContent: `${code(t.num)} · ${cm(t.w)} × ${cm(t.h)}`});
+    b.onclick = () => addKnownSize(t.num, false);
+    recentTypes.append(b);
+  }
   $("typesHint").textContent = tlist.length ? "Нажмите на окно, чтобы добавить его в выбранный кабинет." : "Здесь появятся окна, когда вы введёте первый размер.";
   for (const t of tlist) {
     const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
-    b.disabled = !r || !allowed("measure");
-    b.onclick = async () => { const label = code(t.num); if (await addToRoom(t.num)) toast(`Добавлено: ${label}`); };
+    b.disabled = sizeSaving || !r || !allowed("measure");
+    b.onclick = () => addKnownSize(t.num, false);
     tb.append(b);
   }
 
@@ -1015,6 +1109,7 @@ const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезк�
 function showTab(name){
   document.documentElement.classList.toggle("account-open", name === "account");
   for (const t of Object.keys(TAB_TITLE)) { const s = $("tab-" + t); s.classList.toggle("hidden", t !== name); s.style.display = t === name ? "flex" : ""; }
+  renderMeasureLocation();
   document.querySelectorAll("#drawer .navitem[data-tab]").forEach(x => x.dataset.tab === name ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
   $("pageTitle").textContent = TAB_TITLE[name];
   $("teamCard").classList.add("hidden");
@@ -1080,8 +1175,7 @@ $("roomCreate").onclick = async () => {
   try {
     await ref.set({floor, name, items: {}, updated: Date.now()});
     if (curObj === oid && curFloor === floor) {
-      curRoomId = ref.id;
-      $("roomNewName").value = ""; $("roomNewRow").classList.add("hidden"); render(); $("inW").focus();
+      $("roomNewName").value = ""; $("roomNewRow").classList.add("hidden"); selectMeasureRoom(ref.id);
     }
   } catch(e) { toast(errMsg(e)); }
   finally { creatingRoom = false; }
@@ -1095,6 +1189,15 @@ $("copyBtn").onclick = async () => {
   catch(e) { toast(errMsg(e)); }
 };
 $("addSize").onclick = onAddSize;
+$("measureLocation").onclick = () => {
+  roomChooserOpen = !roomChooserOpen;
+  renderMeasureLocation();
+  window.scrollTo(0, 0);
+  if (roomChooserOpen) $("roomSearch").focus({preventScroll: true});
+};
+$("windowAdded").addEventListener("close", () => {
+  if (!$("tab-measure").classList.contains("hidden") && !$("inW").disabled) $("inW").focus({preventScroll: true});
+});
 // поменяли размер — подсказка о похожем окне уже не про него
 for (const id of ["inW", "inH"]) $(id).addEventListener("input", () => { if (!$("matchBox").classList.contains("hidden")) hideMatch(); });
 $("inW").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("inH").focus(); } });
