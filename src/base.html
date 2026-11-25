@@ -252,7 +252,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
     <details class="card measure-tools" id="sizeCatalog">
       <summary>Все размеры объекта</summary>
-      <div class="empty" id="typesHint">Нажмите на окно, чтобы добавить его в кабинет.</div>
+      <div class="empty">Нажмите на размер, чтобы добавить окно.</div>
       <div class="types" id="typeButtons"></div>
     </details>
 
@@ -800,7 +800,8 @@ async function onAddSize(){
   const all = Object.values(types);
   const exact = all.find(t => t.w === w && t.h === h);
   if (exact) { await addKnownSize(exact.num); return; }
-  const near = all.filter(t => Math.abs(t.w - w) <= TOL && Math.abs(t.h - h) <= TOL);
+  const c = counts();
+  const near = all.filter(t => c[t.num] > 0 && Math.abs(t.w - w) <= TOL && Math.abs(t.h - h) <= TOL);
   if (near.length) { showMatch(w, h, near); return; }
   await addNew(w, h);
 }
@@ -960,7 +961,8 @@ function renderAll(){
   // кнопки видов окон
   const tb = $("typeButtons"); tb.innerHTML = "";
   const c = counts();
-  const tlist = Object.values(types).sort(byType);
+  const tlist = Object.values(types).filter(t => c[t.num] > 0).sort(byType);
+  $("sizeCatalog").classList.toggle("hidden", !r || !allowed("measure") || !tlist.length);
   const byLabel = new Map(tlist.map(t => [code(t.num), t]));
   const recent = (recentWindowCodes.get(curObj) || []).map(label => byLabel.get(label)).filter(Boolean);
   const recentTypes = $("recentTypes");
@@ -971,7 +973,6 @@ function renderAll(){
     b.onclick = () => addKnownSize(t.num, false);
     recentTypes.append(b);
   }
-  $("typesHint").textContent = tlist.length ? "Нажмите на окно, чтобы добавить его в выбранный кабинет." : "Здесь появятся окна, когда вы введёте первый размер.";
   for (const t of tlist) {
     const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
     b.disabled = sizeSaving || !r || !allowed("measure");
@@ -979,7 +980,7 @@ function renderAll(){
     tb.append(b);
   }
 
-  renderTypes(c); renderProgress("cut", c); renderProgress("glue", c); renderSummary(c);
+  renderTypes(c, tlist); renderProgress("cut", c); renderProgress("glue", c); renderSummary(c);
   renderMe(); renderTeam();
   $("measureRO").classList.toggle("hidden", !db || allowed("measure"));
 }
@@ -1035,9 +1036,8 @@ function whereList(n){
 }
 
 let editingType = null;
-function renderTypes(c){
+function renderTypes(c, tlist){
   const body = $("typesBody"); body.innerHTML = "";
-  const tlist = Object.values(types).filter(t => c[t.num] > 0).sort(byType);
   if (!tlist.length) { body.append(el("div", {className: "empty", textContent: "Окон пока нет."})); return; }
   for (const t of tlist) {
     const q = c[t.num], area = t.w * t.h / 10000;

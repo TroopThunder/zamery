@@ -8,7 +8,6 @@ function afterRender(){
   const m = allowed("measure");
   // без права «Замер» не показываем поля ввода и кнопки, которые всё равно не работают
   $("roomTools").classList.toggle("hidden", !m || !room());
-  $("sizeCatalog").classList.toggle("hidden", !m || !room());
   if (!m) document.querySelectorAll("#roomItems .qty button").forEach(b => b.remove());
   $("roomRename").classList.toggle("hidden", !m || !room());
   $("objRename").classList.toggle("hidden", !m || !curObj);
