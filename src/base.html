@@ -80,6 +80,10 @@ button:disabled{opacity:.45;cursor:default}
 #drawer.open{transform:none;box-shadow:4px 0 24px rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 4px 12px}
+.account-open #objCard,.account-open #meRow{display:none}
+.profile-avatar{width:72px;height:72px;border-radius:50%;padding:0;overflow:hidden;background:var(--accent-soft);color:var(--accent);font-size:28px}
+.profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+#profileName{overflow-wrap:anywhere}
 .drawer-head .iconbtn{flex:none}
 .drawer-brand{display:flex;align-items:center;gap:8px;color:#082c54}
 .drawer-brand img{display:block;width:clamp(40px,15vw,58px);height:auto}
@@ -988,6 +992,7 @@ async function copyText(t, msg){
 /* ---------- обработчики ---------- */
 const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка"};
 function showTab(name){
+  document.documentElement.classList.toggle("account-open", name === "account");
   for (const t of Object.keys(TAB_TITLE)) { const s = $("tab-" + t); s.classList.toggle("hidden", t !== name); s.style.display = t === name ? "flex" : ""; }
   document.querySelectorAll("#drawer .navitem[data-tab]").forEach(x => x.dataset.tab === name ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
   $("pageTitle").textContent = TAB_TITLE[name];

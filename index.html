@@ -140,6 +140,10 @@ button:disabled{opacity:.45;cursor:default}
 #drawer.open{transform:none;box-shadow:4px 0 24px rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 4px 12px}
+.account-open #objCard,.account-open #meRow{display:none}
+.profile-avatar{width:72px;height:72px;border-radius:50%;padding:0;overflow:hidden;background:var(--accent-soft);color:var(--accent);font-size:28px}
+.profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+#profileName{overflow-wrap:anywhere}
 .drawer-head .iconbtn{flex:none}
 .drawer-brand{display:flex;align-items:center;gap:8px;color:#082c54}
 .drawer-brand img{display:block;width:clamp(40px,15vw,58px);height:auto}
@@ -432,22 +436,39 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 25.11.2026 19:50</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 25.11.2026 20:01</div>
+    </section>
+  <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
-      <h2>Аккаунт</h2>
+      <div class="row">
+        <button id="avatarPick" class="profile-avatar" aria-label="Выбрать фото профиля"><span id="avatarInitial"></span><img id="avatarImage" class="hidden" alt=""></button>
+        <input id="avatarFile" type="file" accept="image/*" class="hidden">
+        <div class="grow"><h2 id="profileName"></h2><button class="link" id="editName">Изменить имя</button></div>
+      </div>
+      <button class="link" id="editAvatar">Изменить фото</button>
+      <form id="nameForm" class="account-form hidden">
+        <label for="newName">Имя</label><input id="newName" maxlength="60" required>
+        <div class="row"><button>Сохранить</button><button type="button" class="sec" id="cancelName">Отмена</button></div>
+      </form>
+      <div id="profileMsg" role="status" class="msg hidden"></div>
+    </div>
+    <div class="card">
+      <h2>Почта</h2>
       <div class="empty account-address" id="accountEmail"></div>
       <button class="sec hidden" id="accountLink" aria-expanded="false" aria-controls="accountForm">Привязать почту</button>
       <form id="accountForm" class="account-form hidden" novalidate>
         <label for="accountNewEmail">Email</label>
         <input id="accountNewEmail" type="email" autocomplete="email">
-        <label for="accountPass">Текущий пароль WrapPRO</label>
+        <label for="accountPass">Текущий пароль</label>
         <input id="accountPass" type="password" autocomplete="current-password">
         <button id="accountSend">Отправить письмо</button>
       </form>
       <div class="msg hidden" id="accountMsg" role="status"></div>
+      </div>
+    <div class="card"><h2>Безопасность</h2>
       <button class="sec" id="accountPassword" aria-expanded="false" aria-controls="passwordForm">Изменить пароль</button>
       <form id="passwordForm" class="account-form hidden" novalidate>
-        <label for="passwordCurrent">Текущий пароль Glix Pro</label>
+        <label for="passwordCurrent">Текущий пароль</label>
         <input id="passwordCurrent" type="password" autocomplete="current-password">
         <label for="passwordNew">Новый пароль</label>
         <input id="passwordNew" type="password" autocomplete="new-password">
@@ -479,6 +500,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
   <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
   <div class="navsep"></div>
   <button class="navitem" data-tab="settings">Настройки</button>
+  <button class="navitem" data-tab="account">Аккаунт</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
 </nav>
@@ -1749,7 +1771,7 @@ let lookPushT = null;
 function pushLook(){
   clearTimeout(lookPushT);
   if (!fs || !myId) return;
-  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}).catch(() => {}); }, 700);
+  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}, {merge:true}).catch(() => {}); }, 700);
 }
 function saveLook(){ look.t = Date.now(); LOOK.store(look); applyLook(); renderSettings(); pushLook(); }
 // при входе: берём из аккаунта, если там выбор новее, чем на этом устройстве
@@ -1801,6 +1823,7 @@ function visibleTabs(){
     summary: m || mg,                // сводка по объекту — замерщикам и руководству
     shift: c || g || amOwner,        // смены и заработок — тем, кто режет или клеит
     admin: mg,                       // управление — владельцу и руководству
+    account: true,
     settings: true,                  // тема и цвет — всем
   };
 }
@@ -1900,8 +1923,9 @@ async function copyText(t, msg){
 }
 
 /* ---------- обработчики ---------- */
-const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление", settings: "Настройки"};
+const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление", settings: "Настройки", account: "Аккаунт"};
 function showTab(name){
+  document.documentElement.classList.toggle("account-open", name === "account");
   for (const t of Object.keys(TAB_TITLE)) { const s = $("tab-" + t); s.classList.toggle("hidden", t !== name); s.style.display = t === name ? "flex" : ""; }
   document.querySelectorAll("#drawer .navitem[data-tab]").forEach(x => x.dataset.tab === name ? x.setAttribute("aria-current", "page") : x.removeAttribute("aria-current"));
   $("pageTitle").textContent = TAB_TITLE[name];
@@ -2151,6 +2175,42 @@ $("waitResendEmail").onclick = () => runEmailCheck(async user => {
   showAccountMessage("waitMsg", "Письмо отправлено. Проверьте также папку «Спам».");
 });
 
+$("editName").onclick = () => {
+  $("newName").value = me?.name || "";
+  $("nameForm").classList.remove("hidden");
+  $("newName").focus();
+};
+$("cancelName").onclick = () => $("nameForm").classList.add("hidden");
+$("nameForm").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("newName").value.trim();
+  if (!name) { $("newName").focus(); return; }
+  try {
+    await F.updateDoc(F.doc(fs, "users", myId), {name});
+    $("nameForm").classList.add("hidden");
+    showAccountMessage("profileMsg", isLegacyEmail(auth.currentUser.email) ? "Имя сохранено. Для входа используйте прежний логин." : "Имя сохранено.");
+  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить имя. " + errMsg(e)); }
+};
+$("editAvatar").onclick = $("avatarPick").onclick = () => $("avatarFile").click();
+$("avatarFile").onchange = async () => {
+  const file = $("avatarFile").files[0], uid = myId;
+  $("avatarFile").value = "";
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  $("editAvatar").disabled = $("avatarPick").disabled = true;
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 192;
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    canvas.getContext("2d").drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 192, 192);
+    await F.setDoc(F.doc(fs, "prefs", uid), {avatar:canvas.toDataURL("image/jpeg", 0.86)}, {merge:true});
+    showAccountMessage("profileMsg", "Фото сохранено.");
+  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить фото. Попробуйте JPG или PNG."); }
+  finally { URL.revokeObjectURL(url); $("editAvatar").disabled = $("avatarPick").disabled = false; }
+};
 function renderAccountEmail(user){
   const legacy = isLegacyEmail(user.email);
   $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
@@ -2311,12 +2371,24 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
     renderAccountEmail(u);
+    $("avatarImage").removeAttribute("src");
+    $("avatarImage").classList.add("hidden");
+    $("avatarInitial").classList.remove("hidden");
+    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => {
+      const avatar = snap.data()?.avatar;
+      const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
+      if (valid) $("avatarImage").src = avatar;
+      $("avatarImage").classList.toggle("hidden", !valid);
+      $("avatarInitial").classList.toggle("hidden", valid);
+    }, () => {}));
     loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
+      $("profileName").textContent = me?.name || "";
+      $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
       if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();

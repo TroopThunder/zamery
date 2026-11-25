@@ -252,7 +252,7 @@ let lookPushT = null;
 function pushLook(){
   clearTimeout(lookPushT);
   if (!fs || !myId) return;
-  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}).catch(() => {}); }, 700);
+  lookPushT = setTimeout(() => { F.setDoc(F.doc(fs, "prefs/" + myId), {look, updated: Date.now()}, {merge:true}).catch(() => {}); }, 700);
 }
 function saveLook(){ look.t = Date.now(); LOOK.store(look); applyLook(); renderSettings(); pushLook(); }
 // при входе: берём из аккаунта, если там выбор новее, чем на этом устройстве
@@ -304,6 +304,7 @@ function visibleTabs(){
     summary: m || mg,                // сводка по объекту — замерщикам и руководству
     shift: c || g || amOwner,        // смены и заработок — тем, кто режет или клеит
     admin: mg,                       // управление — владельцу и руководству
+    account: true,
     settings: true,                  // тема и цвет — всем
   };
 }

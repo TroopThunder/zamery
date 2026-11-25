@@ -183,6 +183,42 @@ $("waitResendEmail").onclick = () => runEmailCheck(async user => {
   showAccountMessage("waitMsg", "Письмо отправлено. Проверьте также папку «Спам».");
 });
 
+$("editName").onclick = () => {
+  $("newName").value = me?.name || "";
+  $("nameForm").classList.remove("hidden");
+  $("newName").focus();
+};
+$("cancelName").onclick = () => $("nameForm").classList.add("hidden");
+$("nameForm").onsubmit = async e => {
+  e.preventDefault();
+  const name = $("newName").value.trim();
+  if (!name) { $("newName").focus(); return; }
+  try {
+    await F.updateDoc(F.doc(fs, "users", myId), {name});
+    $("nameForm").classList.add("hidden");
+    showAccountMessage("profileMsg", isLegacyEmail(auth.currentUser.email) ? "Имя сохранено. Для входа используйте прежний логин." : "Имя сохранено.");
+  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить имя. " + errMsg(e)); }
+};
+$("editAvatar").onclick = $("avatarPick").onclick = () => $("avatarFile").click();
+$("avatarFile").onchange = async () => {
+  const file = $("avatarFile").files[0], uid = myId;
+  $("avatarFile").value = "";
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  $("editAvatar").disabled = $("avatarPick").disabled = true;
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 192;
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    canvas.getContext("2d").drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 192, 192);
+    await F.setDoc(F.doc(fs, "prefs", uid), {avatar:canvas.toDataURL("image/jpeg", 0.86)}, {merge:true});
+    showAccountMessage("profileMsg", "Фото сохранено.");
+  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить фото. Попробуйте JPG или PNG."); }
+  finally { URL.revokeObjectURL(url); $("editAvatar").disabled = $("avatarPick").disabled = false; }
+};
 function renderAccountEmail(user){
   const legacy = isLegacyEmail(user.email);
   $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
@@ -343,12 +379,24 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
     renderAccountEmail(u);
+    $("avatarImage").removeAttribute("src");
+    $("avatarImage").classList.add("hidden");
+    $("avatarInitial").classList.remove("hidden");
+    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => {
+      const avatar = snap.data()?.avatar;
+      const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
+      if (valid) $("avatarImage").src = avatar;
+      $("avatarImage").classList.toggle("hidden", !valid);
+      $("avatarInitial").classList.toggle("hidden", valid);
+    }, () => {}));
     loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
+      $("profileName").textContent = me?.name || "";
+      $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
       if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();

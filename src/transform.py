@@ -83,21 +83,38 @@ rep('''    <div class="card" id="summaryFloors"></div>
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
+    </section>
+  <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
-      <h2>Аккаунт</h2>
+      <div class="row">
+        <button id="avatarPick" class="profile-avatar" aria-label="Выбрать фото профиля"><span id="avatarInitial"></span><img id="avatarImage" class="hidden" alt=""></button>
+        <input id="avatarFile" type="file" accept="image/*" class="hidden">
+        <div class="grow"><h2 id="profileName"></h2><button class="link" id="editName">Изменить имя</button></div>
+      </div>
+      <button class="link" id="editAvatar">Изменить фото</button>
+      <form id="nameForm" class="account-form hidden">
+        <label for="newName">Имя</label><input id="newName" maxlength="60" required>
+        <div class="row"><button>Сохранить</button><button type="button" class="sec" id="cancelName">Отмена</button></div>
+      </form>
+      <div id="profileMsg" role="status" class="msg hidden"></div>
+    </div>
+    <div class="card">
+      <h2>Почта</h2>
       <div class="empty account-address" id="accountEmail"></div>
       <button class="sec hidden" id="accountLink" aria-expanded="false" aria-controls="accountForm">Привязать почту</button>
       <form id="accountForm" class="account-form hidden" novalidate>
         <label for="accountNewEmail">Email</label>
         <input id="accountNewEmail" type="email" autocomplete="email">
-        <label for="accountPass">Текущий пароль WrapPRO</label>
+        <label for="accountPass">Текущий пароль</label>
         <input id="accountPass" type="password" autocomplete="current-password">
         <button id="accountSend">Отправить письмо</button>
       </form>
       <div class="msg hidden" id="accountMsg" role="status"></div>
+      </div>
+    <div class="card"><h2>Безопасность</h2>
       <button class="sec" id="accountPassword" aria-expanded="false" aria-controls="passwordForm">Изменить пароль</button>
       <form id="passwordForm" class="account-form hidden" novalidate>
-        <label for="passwordCurrent">Текущий пароль Glix Pro</label>
+        <label for="passwordCurrent">Текущий пароль</label>
         <input id="passwordCurrent" type="password" autocomplete="current-password">
         <label for="passwordNew">Новый пароль</label>
         <input id="passwordNew" type="password" autocomplete="new-password">
@@ -160,6 +177,7 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">','''<m
 <script>
 '''+open(os.path.join(SRC,'look_head.js'),encoding='utf-8').read()+'''</script>''')
 rep('''  <button class="navitem" id="logoutBtn">Выйти</button>''','''  <button class="navitem" data-tab="settings">Настройки</button>
+  <button class="navitem" data-tab="account">Аккаунт</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>''')
 # ---------- SCRIPT ----------
@@ -281,7 +299,7 @@ rep('''  renderMe(); renderTeam();''','''  renderMe(); renderShift(); renderAdmi
 
 # tabs
 rep('''const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка"};''',
-'''const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление", settings: "Настройки"};''')
+'''const TAB_TITLE = {measure: "Замер", types: "Окна", cut: "Нарезка", glue: "Оклейка", summary: "Сводка", shift: "Моя смена", admin: "Управление", settings: "Настройки", account: "Аккаунт"};''')
 rep('''  $("teamCard").classList.add("hidden");\n''','''  if (name === "admin") loadAllWork();
   if (name === "shift") scheduleShiftWork(0);
 ''')
