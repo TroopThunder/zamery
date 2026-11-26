@@ -47,7 +47,85 @@ const emailEnrollmentEnabled = true;
 let authMode = "login";
 let registrationDraft;
 const registrationKey = "glixpro-email-registration";
+const rememberedAccountsKey = "glixpro-remembered-accounts";
+const accountSwitchKey = "glixpro-account-switch";
 try { registrationDraft = JSON.parse(sessionStorage.getItem(registrationKey)); } catch(e) {}
+function readRememberedAccounts(){
+  try {
+    const accounts = JSON.parse(localStorage.getItem(rememberedAccountsKey) || "[]");
+    return Array.isArray(accounts) ? accounts.filter(account => account && typeof account.uid === "string") : [];
+  } catch(e) { return []; }
+}
+function saveRememberedAccounts(accounts){
+  try { localStorage.setItem(rememberedAccountsKey, JSON.stringify(accounts)); } catch(e) {}
+}
+function rememberAccount(user, identifier, displayName){
+  if (!user || !user.uid) return;
+  const accounts = readRememberedAccounts();
+  const previous = accounts.find(account => account.uid === user.uid);
+  const email = user.email || previous?.email || "";
+  const account = {
+    uid: user.uid,
+    email,
+    identifier: isRealEmail(email) ? email : (identifier || previous?.identifier || displayName || ""),
+    name: displayName || previous?.name || user.displayName || ""
+  };
+  saveRememberedAccounts([account, ...accounts.filter(item => item.uid !== user.uid)].slice(0, 8));
+  renderRememberedAccounts();
+}
+function renderRememberedAccounts(){
+  const list = $("rememberedAccounts");
+  if (!list) return;
+  list.replaceChildren();
+  for (const account of readRememberedAccounts()) {
+    const row = document.createElement("div");
+    row.className = "remembered-account";
+    const identity = document.createElement("div");
+    identity.className = "remembered-account-identity";
+    const name = document.createElement("strong");
+    name.textContent = account.name || account.identifier || "Аккаунт";
+    const detail = document.createElement("span");
+    detail.textContent = account.email && !isLegacyEmail(account.email) ? account.email : "Вход по имени";
+    identity.append(name, detail);
+    const actions = document.createElement("div");
+    actions.className = "remembered-account-actions";
+    if (account.uid === myId) {
+      const current = document.createElement("span");
+      current.className = "empty";
+      current.textContent = "Текущий";
+      actions.append(current);
+    } else {
+      const switchButton = document.createElement("button");
+      switchButton.type = "button";
+      switchButton.className = "sec";
+      switchButton.textContent = "Переключить";
+      switchButton.addEventListener("click", () => beginAccountSwitch(account));
+      actions.append(switchButton);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "link";
+      removeButton.textContent = "Убрать";
+      removeButton.setAttribute("aria-label", `Убрать ${account.name || account.identifier} из списка`);
+      removeButton.addEventListener("click", () => {
+        saveRememberedAccounts(readRememberedAccounts().filter(item => item.uid !== account.uid));
+        renderRememberedAccounts();
+      });
+      actions.append(removeButton);
+    }
+    row.append(identity, actions);
+    list.append(row);
+  }
+}
+async function beginAccountSwitch(account){
+  try {
+    sessionStorage.setItem(accountSwitchKey, JSON.stringify(account || {}));
+    await A.signOut(auth);
+    location.reload();
+  } catch(e) {
+    try { sessionStorage.removeItem(accountSwitchKey); } catch(error) {}
+    showAccountMessage("accountsMsg", "Не удалось выйти из текущего аккаунта. Повторите попытку.");
+  }
+}
 function saveRegistrationDraft(draft){
   registrationDraft = draft;
   try {
@@ -108,9 +186,13 @@ $("aForm").onsubmit = async e => {
       catch(error) { if (error.code !== "auth/user-not-found") throw error; }
       msg.textContent = "Если к этому адресу привязан аккаунт, на почту придёт ссылка для сброса пароля.";
     } else if (mode === "login") {
-      await A.signInWithEmailAndPassword(auth, isRealEmail(email) ? email : await nameToEmail(name), pass);
+      const credential = await A.signInWithEmailAndPassword(auth, isRealEmail(email) ? email : await nameToEmail(name), pass);
+      rememberAccount(credential.user, entered);
+      try { sessionStorage.removeItem(accountSwitchKey); } catch(e) {}
     } else {
       const cred = await A.createUserWithEmailAndPassword(auth, email, pass);
+      rememberAccount(cred.user, email, name);
+      try { sessionStorage.removeItem(accountSwitchKey); } catch(e) {}
       saveRegistrationDraft({uid: cred.user.uid, name});
       await createRegistrationProfile(cred.user);
     }
@@ -340,6 +422,7 @@ $("passwordForm").onsubmit = async e => {
 };
 const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
+$("addAccount").onclick = () => beginAccountSwitch(null);
 
 /* ---------- запуск ---------- */
 function view(name){ window.watchAppLoad(name === "loadView"); for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
@@ -427,7 +510,14 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
   let userSubs = [];
   A.onAuthStateChanged(auth, u => {
     userSubs.forEach(f => f()); userSubs = [];
-    if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
+    if (!u) {
+      myId = null; me = null; view("authView"); setAuthMode("login");
+      let switchAccount = null;
+      try { switchAccount = JSON.parse(sessionStorage.getItem(accountSwitchKey)); } catch(e) {}
+      $("aName").value = switchAccount?.identifier || "";
+      if (switchAccount) $("aMsg").textContent = switchAccount.uid ? "Введите пароль выбранного аккаунта." : "Войдите в другой аккаунт, чтобы добавить его в список.";
+      return;
+    }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
@@ -442,6 +532,7 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
       $("menuName").textContent = $("profileName").textContent = me?.name || "";
       $("menuInitial").textContent = $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
+      rememberAccount(u, isLegacyEmail(u.email) ? me?.name : u.email, me?.name);
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
       if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();

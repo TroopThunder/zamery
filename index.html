@@ -263,6 +263,12 @@ button.progress-floor{min-height:44px;padding:7px 5px;background:var(--surface);
 .account-form{display:flex;flex-direction:column;gap:6px}
 .account-form input{min-width:0;width:100%}
 .account-address{overflow-wrap:anywhere}
+.remembered-accounts{display:grid;gap:8px;margin:10px 0}
+.remembered-account{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px;min-width:0}
+.remembered-account-identity{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.remembered-account-identity span{font-size:13px;color:var(--muted)}
+.remembered-account-actions{display:flex;align-items:center;gap:8px;flex:none}
+@media(max-width:420px){.remembered-account{align-items:flex-start;flex-direction:column}.remembered-account-actions{width:100%;justify-content:flex-end}}
 .msg{color:var(--warn);font-size:14px;min-height:1.2em}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grid2 input{width:100%}
@@ -529,9 +535,16 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 18:13</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 23:17</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
+    <div class="card">
+      <h2>Аккаунты на этом устройстве</h2>
+      <p class="empty">Для переключения потребуется пароль. Пароли не сохраняются.</p>
+      <div id="rememberedAccounts" class="remembered-accounts" aria-live="polite"></div>
+      <button type="button" class="sec" id="addAccount">Добавить аккаунт</button>
+      <div class="msg hidden" id="accountsMsg" role="status"></div>
+    </div>
     <div class="card">
       <div class="row">
         <button id="avatarPick" class="profile-avatar" aria-label="Выбрать фото профиля"><span id="avatarInitial"></span><img id="avatarImage" class="hidden" alt=""></button>
@@ -2488,6 +2501,84 @@ let authMode = "login";
 let registrationDraft;
 const registrationKey = "glixpro-email-registration";
 try { registrationDraft = JSON.parse(sessionStorage.getItem(registrationKey)); } catch(e) {}
+const rememberedAccountsKey = "glixpro-remembered-accounts";
+const accountSwitchKey = "glixpro-account-switch";
+function readRememberedAccounts(){
+  try {
+    const accounts = JSON.parse(localStorage.getItem(rememberedAccountsKey) || "[]");
+    return Array.isArray(accounts) ? accounts.filter(account => account && typeof account.uid === "string") : [];
+  } catch(e) { return []; }
+}
+function saveRememberedAccounts(accounts){
+  try { localStorage.setItem(rememberedAccountsKey, JSON.stringify(accounts)); } catch(e) {}
+}
+function rememberAccount(user, identifier, displayName){
+  if (!user || !user.uid) return;
+  const accounts = readRememberedAccounts();
+  const previous = accounts.find(account => account.uid === user.uid);
+  const email = user.email || previous?.email || "";
+  const account = {
+    uid: user.uid,
+    email,
+    identifier: isRealEmail(email) ? email : (identifier || previous?.identifier || displayName || ""),
+    name: displayName || previous?.name || user.displayName || ""
+  };
+  saveRememberedAccounts([account, ...accounts.filter(item => item.uid !== user.uid)].slice(0, 8));
+  renderRememberedAccounts();
+}
+function renderRememberedAccounts(){
+  const list = $("rememberedAccounts");
+  if (!list) return;
+  list.replaceChildren();
+  for (const account of readRememberedAccounts()) {
+    const row = document.createElement("div");
+    row.className = "remembered-account";
+    const identity = document.createElement("div");
+    identity.className = "remembered-account-identity";
+    const name = document.createElement("strong");
+    name.textContent = account.name || account.identifier || "Аккаунт";
+    const detail = document.createElement("span");
+    detail.textContent = account.email && !isLegacyEmail(account.email) ? account.email : "Вход по имени";
+    identity.append(name, detail);
+    const actions = document.createElement("div");
+    actions.className = "remembered-account-actions";
+    if (account.uid === myId) {
+      const current = document.createElement("span");
+      current.className = "empty";
+      current.textContent = "Текущий";
+      actions.append(current);
+    } else {
+      const switchButton = document.createElement("button");
+      switchButton.type = "button";
+      switchButton.className = "sec";
+      switchButton.textContent = "Переключить";
+      switchButton.addEventListener("click", () => beginAccountSwitch(account));
+      actions.append(switchButton);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "link";
+      removeButton.textContent = "Убрать";
+      removeButton.setAttribute("aria-label", `Убрать ${account.name || account.identifier} из списка`);
+      removeButton.addEventListener("click", () => {
+        saveRememberedAccounts(readRememberedAccounts().filter(item => item.uid !== account.uid));
+        renderRememberedAccounts();
+      });
+      actions.append(removeButton);
+    }
+    row.append(identity, actions);
+    list.append(row);
+  }
+}
+async function beginAccountSwitch(account){
+  try {
+    sessionStorage.setItem(accountSwitchKey, JSON.stringify(account || {}));
+    await A.signOut(auth);
+    location.reload();
+  } catch(e) {
+    try { sessionStorage.removeItem(accountSwitchKey); } catch(error) {}
+    showAccountMessage("accountsMsg", "Не удалось выйти из текущего аккаунта. Повторите попытку.");
+  }
+}
 function saveRegistrationDraft(draft){
   registrationDraft = draft;
   try {
@@ -2548,9 +2639,13 @@ $("aForm").onsubmit = async e => {
       catch(error) { if (error.code !== "auth/user-not-found") throw error; }
       msg.textContent = "Если к этому адресу привязан аккаунт, на почту придёт ссылка для сброса пароля.";
     } else if (mode === "login") {
-      await A.signInWithEmailAndPassword(auth, isRealEmail(email) ? email : await nameToEmail(name), pass);
+      const credential = await A.signInWithEmailAndPassword(auth, isRealEmail(email) ? email : await nameToEmail(name), pass);
+      rememberAccount(credential.user, entered);
+      try { sessionStorage.removeItem(accountSwitchKey); } catch(e) {}
     } else {
       const cred = await A.createUserWithEmailAndPassword(auth, email, pass);
+      rememberAccount(cred.user, email, name);
+      try { sessionStorage.removeItem(accountSwitchKey); } catch(e) {}
       saveRegistrationDraft({uid: cred.user.uid, name});
       await createRegistrationProfile(cred.user);
     }
@@ -2780,6 +2875,7 @@ $("passwordForm").onsubmit = async e => {
 };
 const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
+$("addAccount").onclick = () => beginAccountSwitch(null);
 
 /* ---------- запуск ---------- */
 function view(name){ window.watchAppLoad(name === "loadView"); for (const v of ["loadView", "authView", "waitView", "app"]) $(v).classList.toggle("hidden", v !== name); }
@@ -2867,7 +2963,14 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
   let userSubs = [];
   A.onAuthStateChanged(auth, u => {
     userSubs.forEach(f => f()); userSubs = [];
-    if (!u) { myId = null; me = null; view("authView"); setAuthMode("login"); return; }
+    if (!u) {
+      myId = null; me = null; view("authView"); setAuthMode("login");
+      let switchAccount = null;
+      try { switchAccount = JSON.parse(sessionStorage.getItem(accountSwitchKey)); } catch(e) {}
+      $("aName").value = switchAccount?.identifier || "";
+      if (switchAccount) $("aMsg").textContent = switchAccount.uid ? "Введите пароль выбранного аккаунта." : "Войдите в другой аккаунт, чтобы добавить его в список.";
+      return;
+    }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
@@ -2880,6 +2983,7 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
+      rememberAccount(u, isLegacyEmail(u.email) ? me?.name : u.email, me?.name);
       $("menuName").textContent = $("profileName").textContent = me?.name || "";
       $("menuInitial").textContent = $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }

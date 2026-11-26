@@ -109,6 +109,13 @@ rep('''    <div class="card" id="summaryFloors"></div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
+      <h2>Аккаунты на этом устройстве</h2>
+      <p class="empty">Для переключения потребуется пароль. Пароли не сохраняются.</p>
+      <div id="rememberedAccounts" class="remembered-accounts" aria-live="polite"></div>
+      <button type="button" class="sec" id="addAccount">Добавить аккаунт</button>
+      <div class="msg hidden" id="accountsMsg" role="status"></div>
+    </div>
+    <div class="card">
       <div class="row">
         <button id="avatarPick" class="profile-avatar" aria-label="Выбрать фото профиля"><span id="avatarInitial"></span><img id="avatarImage" class="hidden" alt=""></button>
         <input id="avatarFile" type="file" accept="image/*" class="hidden">
@@ -181,6 +188,12 @@ rep('.hidden{display:none !important}','''.authwrap{min-height:100vh;display:gri
 .account-form{display:flex;flex-direction:column;gap:6px}
 .account-form input{min-width:0;width:100%}
 .account-address{overflow-wrap:anywhere}
+.remembered-accounts{display:grid;gap:8px;margin:10px 0}
+.remembered-account{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:12px;min-width:0}
+.remembered-account-identity{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.remembered-account-identity span{font-size:13px;color:var(--muted)}
+.remembered-account-actions{display:flex;align-items:center;gap:8px;flex:none}
+@media(max-width:420px){.remembered-account{align-items:flex-start;flex-direction:column}.remembered-account-actions{width:100%;justify-content:flex-end}}
 .msg{color:var(--warn);font-size:14px;min-height:1.2em}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .grid2 input{width:100%}
