@@ -290,16 +290,17 @@ rep('''  const ref = db.collection(objPath() + "/log").doc();
     const own = doneBy(kind, opt.room || "", myId)[n] || 0;
     if (-q > own) { toast("Можно отменить только свои отметки"); return; }
   }
-  if (!amOwner && q > 0 && !myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
   const ref = db.collection(objPath() + "/log").doc();
-  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};
-  if (myShift) entry.shift = myShift.id;''')
+  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now(), shift: myShift.id};''')
 rep('''  if (!q) return;
   if (kind === "glue"''','''  if (!q) return;
   if (closingShift) { toast("Дождитесь закрытия смены"); return; }
+  if (!myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
   if (kind === "glue"''')
-rep('''  try { await ref.set(entry); if (!opt.silent)''','''  pendingMarks++;
-  try { await ref.set(entry); scheduleShiftWork(); if (!opt.silent)''')
+rep('''  try {
+    await ref.set(entry); if (!opt.silent)''','''  pendingMarks++;
+  try {
+    await ref.set(entry); scheduleShiftWork(); if (!opt.silent)''')
 rep('''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }''','''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
   finally { pendingMarks--; }''')
 

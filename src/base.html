@@ -63,8 +63,6 @@ button:disabled{opacity:.45;cursor:default}
 .gitem{display:flex;flex-direction:column;gap:6px;padding:10px 0 10px 10px;border-bottom:1px solid var(--line);border-left:4px solid var(--line)}
 .gitem.st-done{border-left-color:var(--ok)}
 .gitem.st-ready{border-left-color:var(--accent)}
-.gitem.st-wait{border-left-color:var(--line);opacity:.85}
-.gitem .row{gap:8px}
 .tag{font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;white-space:nowrap}
 .tag.done{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
 .tag.ready{background:var(--accent-soft);color:var(--accent)}
@@ -164,8 +162,14 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pnums b{color:var(--ink);font:600 14px var(--mono)}
 .pnums .left b{color:var(--warn)}
 .pnums .done b{color:var(--ok)}
-.pact{display:flex;gap:6px;align-items:center}
+.pact{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .pact input{width:64px;flex:none;text-align:center}
+.progress-switch{grid-template-columns:repeat(2,minmax(0,1fr))}
+.progress-switch button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
+.progress-window .code{font-size:20px}
+.progress-window .size{font-size:16px;color:var(--ink)}
+.progress-window .tag{font-size:14px}
+.progress-waiting{align-self:flex-start;text-align:left}
 .pill{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--bg);color:var(--muted)}
 .pill.ok{color:var(--ok)}
 .log{display:flex;flex-direction:column;gap:2px;font-size:13px}
@@ -500,6 +504,7 @@ function canGlueIn(r, k){
   return Math.max(0, Math.min(l, own + freeCut(k), glueAvailTotal(k)));
 }
 async function mark(kind, n, q, opt = {}){
+  if (!allowed(kind)) return;
   if (!q) return;
   if (kind === "glue" && q > 0) {
     const r = opt.room ? rooms.find(x => x.id === opt.room) : null;
@@ -516,7 +521,10 @@ async function mark(kind, n, q, opt = {}){
   if (opt.reset) entry.reset = true;
   if (opt.room) entry.room = opt.room;
   log.push({id: ref.id, ...entry}); render();
-  try { await ref.set(entry); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`); }
+  try {
+    await ref.set(entry); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`);
+    return true;
+  }
   catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
 }
 // Сброс окна по всему объекту: обнуляет и отметки без кабинета, и по каждому кабинету
@@ -541,6 +549,28 @@ const when = t => { const d = new Date(t); return d.toLocaleDateString("ru-RU", 
 const roomLabel = id => { const r = rooms.find(x => x.id === id); return r ? `${r.floor} эт., каб. ${r.name}` : "удалённый кабинет"; };
 
 const progView = {cut: "all", glue: "all"}, progFloor = {cut: null, glue: null};
+const progFilter = {cut: "work", glue: "work"};
+let showWaitingGlue = false;
+const markLimit = 500;
+const markLabel = q => `Отметить ${q} шт.`;
+function progressRows(kind, rows){
+  return rows.filter(({left, available}) => progFilter[kind] === "done" ? left <= 0 :
+    left > 0 && (kind === "cut" || available > 0 || showWaitingGlue));
+}
+function progressEmpty(kind, hasWindows){
+  if (!hasWindows) return "Здесь пока нет окон.";
+  if (progFilter[kind] === "done") return "Готовых позиций пока нет.";
+  if (kind === "glue" && !showWaitingGlue) return "Сейчас нет позиций, доступных к оклейке.";
+  return "Нет позиций в работе.";
+}
+function progressWindow(kind, k, t, left, available, done, need){
+  const label = left <= 0 ? statusPill(done, need) :
+    available > 0 ? el("span", {className: "tag ready", textContent: `${kind === "glue" ? "Можно клеить" : "Можно нарезать"} ${available} шт.`}) :
+    el("span", {className: "tag wait", textContent: "Ждёт нарезки"});
+  return el("div", {className: "row progress-window"}, el("span", {className: "code", textContent: code(k)}),
+    t && el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}) || "",
+    el("span", {className: "grow"}), label);
+}
 const pct = (d, n) => n ? Math.min(100, Math.round(d / n * 100)) : 0;
 const bar = (d, n) => el("div", {className: "bar"}, el("i", {style: `width:${pct(d, n)}%`}));
 const statusPill = (d, n) => n - d <= 0 ? el("span", {className: "pill ok", textContent: n - d < 0 ? `готово, лишние ${d - n}` : "готово"}) : el("span", {className: "pill", textContent: `${pct(d, n)}%`});
@@ -553,7 +583,7 @@ function stats3(need, made, kind){
 
 function renderProgress(kind, c){
   const box = $("tab-" + kind); box.innerHTML = "";
-  const done = doneBy(kind), cutDone = doneBy("cut");
+  const done = doneBy(kind);
   const tlist = Object.values(types).filter(t => c[t.num] || done[t.num]).sort(byType);
   const need = tlist.reduce((s, t) => s + (c[t.num] || 0), 0);
   const made = tlist.reduce((s, t) => s + Math.min(done[t.num] || 0, c[t.num] || 0), 0);
@@ -569,51 +599,78 @@ function renderProgress(kind, c){
     bar(made, need)));
 
   // подвкладки
-  const sub = el("div", {className: "tabs", style: "grid-template-columns:1fr 1fr", role: "tablist"});
+  const refresh = id => { render(); $(id).focus({preventScroll: true}); };
+  const sub = el("div", {className: "tabs progress-switch", role: "group", ariaLabel: "Группировка окон"});
   for (const [v, label] of [["all", "Общее"], ["rooms", "По этажам и кабинетам"]]) {
-    const b = el("button", {textContent: label, role: "tab"});
-    b.setAttribute("aria-selected", progView[kind] === v);
-    b.onclick = () => { progView[kind] = v; render(); };
+    const b = el("button", {id: `progress-${kind}-${v}`, textContent: label, ariaPressed: String(progView[kind] === v)});
+    b.onclick = () => { progView[kind] = v; refresh(b.id); };
     sub.append(b);
   }
   box.append(sub);
-  if (db && !allowed(kind)) box.append(el("div", {className: "notice", textContent: `У вас нет прав отмечать ${kind === "cut" ? "нарезку" : "оклейку"} — только просмотр. Права выдаёт владелец.`}));
+  const filter = el("div", {className: "tabs progress-switch", role: "group", ariaLabel: "Статус окон"});
+  for (const [v, label] of [["work", "В работе"], ["done", "Готовые"]]) {
+    const b = el("button", {id: `progress-${kind}-${v}`, textContent: label, ariaPressed: String(progFilter[kind] === v)});
+    b.onclick = () => { progFilter[kind] = v; refresh(b.id); };
+    filter.append(b);
+  }
+  box.append(filter);
+  if (kind === "glue" && progFilter[kind] === "work") {
+    const waiting = el("button", {id: "progress-glue-waiting", className: "link progress-waiting",
+      textContent: showWaitingGlue ? "Скрыть ожидающие нарезки" : "Показать ожидающие нарезки", ariaPressed: String(showWaitingGlue)});
+    waiting.onclick = () => { showWaitingGlue = !showWaitingGlue; refresh(waiting.id); };
+    box.append(waiting);
+  }
+  const permitted = allowed(kind);
+  const canMark = permitted && !!myShift;
+  if (db && !permitted) box.append(el("div", {className: "notice", textContent: `У вас нет прав отмечать ${kind === "cut" ? "нарезку" : "оклейку"} — только просмотр. Права выдаёт владелец.`}));
+  if (permitted && !myShift) box.append(el("div", {className: "notice", textContent: "Чтобы ставить и отменять отметки, откройте смену в меню «Моя смена»."}));
 
-  if (progView[kind] === "all") renderProgressAll(kind, c, box, tlist, done, cutDone);
-  else renderProgressRooms(kind, box);
-
+  if (progView[kind] === "all") renderProgressAll(kind, c, box, tlist, done, canMark);
+  else renderProgressRooms(kind, box, canMark);
 }
 
-function renderProgressAll(kind, c, box, tlist, done, cutDone){
-  // готовые окна — в конец списка
-  const isDone = t => (c[t.num] || 0) - (done[t.num] || 0) <= 0;
-  tlist = [...tlist].sort((a, b) => (isDone(a) - isDone(b)) || byType(a, b));
+function renderProgressAll(kind, c, box, tlist, done, canMark){
+  const rows = tlist.map(t => {
+    const n = c[t.num] || 0, d = done[t.num] || 0, left = Math.max(0, n - d);
+    const available = kind === "glue" ? Math.min(left, glueAvailTotal(t.num)) : left;
+    return {t, n, d, left, available};
+  });
+  const visible = progressRows(kind, rows);
   const list = el("div", {className: "card"}, el("h2", {textContent: "По окнам"}));
-  if (kind === "glue") list.append(el("div", {className: "empty", textContent: "«Можно клеить» — сколько уже нарезано, но ещё не наклеено."}));
-  if (!tlist.length) list.append(el("div", {className: "empty", textContent: "Сначала запишите окна на вкладке «Замер»."}));
-  for (const t of tlist) {
-    const n = c[t.num] || 0, d = done[t.num] || 0, l = n - d;
-    const qIn = el("input", {value: "1", inputMode: "numeric", ariaLabel: "Сколько штук", id: `q-${kind}-${t.num}`});
-    const plus = el("button", {textContent: "Отметить"});
-    plus.onclick = () => { const q = parseInt(qIn.value, 10); if (!(q > 0)) { toast("Введите количество"); return; } mark(kind, t.num, q); };
-    const allBtn = el("button", {className: "sec", textContent: "Все"});
-    const cap = kind === "glue" ? Math.min(Math.max(0, l), glueAvailTotal(t.num)) : Math.max(0, l);
-    allBtn.onclick = () => { if (cap > 0) mark(kind, t.num, cap); };
-    allBtn.disabled = cap <= 0 || !allowed(kind); plus.disabled = !allowed(kind) || (kind === "glue" && glueAvailTotal(t.num) <= 0); qIn.disabled = plus.disabled;
+  if (!visible.length) list.append(el("div", {className: "empty", textContent: progressEmpty(kind, rows.length)}));
+  for (const {t, n, d, left, available} of visible) {
+    const actions = el("div", {className: "pact"});
+    if (available > 0) {
+      const qIn = el("input", {value: "1", inputMode: "numeric", ariaLabel: `Количество, шт. (${code(t.num)})`, disabled: !canMark});
+      const plus = el("button", {className: "sec", textContent: "Отметить", disabled: !canMark});
+      plus.onclick = () => {
+        const q = Number(qIn.value);
+        if (!Number.isInteger(q) || q < 1 || q > markLimit) { toast(`Введите целое количество от 1 до ${markLimit} шт.`); return; }
+        if (kind === "glue" && q > available) { toast(`Можно клеить ${available} шт.`); return; }
+        mark(kind, t.num, q);
+      };
+      const cap = Math.min(available, markLimit);
+      const allBtn = el("button", {textContent: markLabel(cap), disabled: !canMark});
+      allBtn.onclick = () => mark(kind, t.num, cap);
+      actions.append(qIn, plus, allBtn);
+    }
     const myD = canResetAll() ? d : (doneBy(kind, undefined, myId)[t.num] || 0);
     const resetBtn = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"});
     resetBtn.title = canResetAll() ? "Обнулить все отметки по этому окну, в том числе по кабинетам" : "Отменить только ваши отметки по этому окну";
     resetBtn.onclick = () => confirmTap(resetBtn, () => resetEverywhere(kind, t.num));
-    resetBtn.disabled = !allowed(kind) || myD <= 0;
+    if (myD > 0) {
+      resetBtn.disabled = !canMark;
+      actions.append(resetBtn);
+    }
     const nums = el("div", {className: "pnums"},
       el("span", {}, "Нужно ", el("b", {textContent: n})),
       el("span", {className: "done"}, KIND[kind].verb + " ", el("b", {textContent: d})),
-      el("span", {className: "left"}, "Осталось ", el("b", {textContent: Math.max(0, l)})));
-    if (kind === "glue") nums.append(el("span", {}, "Можно клеить ", el("b", {textContent: Math.max(0, (cutDone[t.num] || 0) - d)})));
+      el("span", {className: "left"}, "Осталось ", el("b", {textContent: left})));
+    if (kind === "glue" && available > 0 && available < left) nums.append(el("span", {textContent: `Ждут нарезки ${left - available} шт.`}));
     list.append(el("div", {className: "prow"},
-      el("div", {className: "row"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}), el("span", {className: "grow"}), statusPill(d, n)),
+      progressWindow(kind, t.num, t, left, available, d, n),
       nums, bar(d, n),
-      el("div", {className: "pact"}, qIn, el("span", {className: "size", textContent: "шт"}), plus, allBtn, el("span", {className: "grow"}), resetBtn)));
+      actions.childElementCount ? actions : ""));
   }
   box.append(list);
 }
@@ -640,14 +697,21 @@ function floorGlueReady(f){
       if (l > own) looseNeed[k] = (looseNeed[k] || 0) + (l - own);
     }
   }
-  for (const k of Object.keys(looseNeed)) ready[k] = (ready[k] || 0) + Math.min(looseNeed[k], freeCut(k), Math.max(0, glueAvailTotal(k) - (ready[k] || 0)));
+  for (const k of Object.keys(ready)) {
+    const loose = looseNeed[k] ? Math.min(looseNeed[k], freeCut(k)) : 0;
+    ready[k] = Math.min(glueAvailTotal(k), ready[k] + loose);
+  }
   const total = Object.values(ready).reduce((a, b) => a + b, 0);
   return {ready, wait: Math.max(0, need - total)};
 }
-function renderProgressRooms(kind, box){
+function renderProgressRooms(kind, box, canMark){
   const fl = floors();
   if (!fl.length) { box.append(el("div", {className: "card"}, el("div", {className: "empty", textContent: "Этажей и кабинетов пока нет."}))); return; }
-  if (!fl.includes(progFloor[kind])) progFloor[kind] = fl[0];
+  const glueByFloor = kind === "glue" ? new Map(fl.map(f => [f, floorGlueReady(f)])) : null;
+  if (!fl.includes(progFloor[kind])) {
+    const readyFloor = glueByFloor && fl.find(f => Object.values(glueByFloor.get(f).ready).some(q => q > 0));
+    progFloor[kind] = readyFloor || fl[0];
+  }
 
   // сводка по всем этажам
   const fcard = el("div", {className: "card"}, el("h2", {textContent: "По этажам"}));
@@ -658,14 +722,15 @@ function renderProgressRooms(kind, box){
       for (const [k, q] of Object.entries(r.items)) if (q > 0) { n += q; d += Math.min(q, rd[k] || 0); }
     }
     const b = el("button", {className: "prow", style: "background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;color:var(--ink);text-align:left;font-weight:400;padding:10px 0"},
-      el("div", {className: "row"}, el("b", {textContent: `${f} этаж`}), el("span", {className: "size", textContent: `${d} из ${n}`}), el("span", {className: "grow"}), statusPill(d, n)),
+      el("div", {className: "row"}, el("b", {textContent: `${f} этаж`}), el("span", {className: "size", textContent: `${d} из ${n}`}), el("span", {className: "grow"}),
+        n ? statusPill(d, n) : el("span", {className: "pill", textContent: "Нет окон"})),
       bar(d, n));
     if (kind === "glue" && d < n) {
-      const g = floorGlueReady(f);
+      const g = glueByFloor.get(f);
       const total = Object.values(g.ready).reduce((a, b) => a + b, 0);
       b.append(el("div", {className: "legend"},
-        el("span", {className: "tag ready", textContent: `Можно клеить: ${total}`}),
-        el("span", {className: "tag wait", textContent: `Ждут нарезки: ${g.wait}`})));
+        el("span", {className: "tag ready", textContent: `Можно клеить ${total} шт.`}),
+        el("span", {className: "tag wait", textContent: `Ждут нарезки ${g.wait} шт.`})));
       const list = Object.keys(g.ready).filter(k => g.ready[k] > 0).sort(byCode).map(k => `${code(k)} × ${g.ready[k]}`).join(", ");
       if (list) b.append(el("div", {className: "code", style: "font-size:13px;line-height:1.5;color:var(--accent)", textContent: list}));
     }
@@ -677,82 +742,67 @@ function renderProgressRooms(kind, box){
   if (loose > 0) fcard.append(el("div", {className: "empty", textContent: `Ещё ${loose} шт отмечено во вкладке «Общее» без кабинета — они входят в итог по объекту, но не в этажи.`}));
   box.append(fcard);
 
-  // кабинеты выбранного этажа
   const f = progFloor[kind];
-  const roomLeft = r => { const rd = doneBy(kind, r.id); return Object.entries(r.items).reduce((s, [k, q]) => s + Math.max(0, q - (rd[k] || 0)), 0); };
-  const roomDone = r => Object.values(r.items).some(q => q > 0) && roomLeft(r) === 0;
-  const fr = rooms.filter(r => r.floor === f).sort((a, b) => (roomDone(a) - roomDone(b)) || byNum(a.name, b.name));
-  if (!fr.length) box.append(el("div", {className: "card"}, el("div", {className: "empty", textContent: `На ${f} этаже нет кабинетов.`})));
+  const fr = rooms.filter(r => r.floor === f).sort((a, b) => byNum(a.name, b.name));
+  let hasWindows = false, hasVisible = false;
   for (const r of fr) {
-    const rd = doneBy(kind, r.id);
-    const nums = Object.keys(r.items).filter(k => r.items[k] > 0)
-      .sort((a, b) => ((r.items[a] - (rd[a] || 0) <= 0) - (r.items[b] - (rd[b] || 0) <= 0)) || byNum(a, b));
-    const rn = nums.reduce((s, k) => s + r.items[k], 0), rdone = nums.reduce((s, k) => s + Math.min(r.items[k], rd[k] || 0), 0);
-    const allRoom = el("button", {className: "sec", textContent: "Весь кабинет"});
-    allRoom.disabled = !allowed(kind) || rdone >= rn;
-    allRoom.onclick = () => {
-      let any = 0, skipped = 0;
-      for (const k of nums) {
-        const l = r.items[k] - (doneBy(kind, r.id)[k] || 0); if (l <= 0) continue;
-        const q = kind === "glue" ? canGlueIn(r, k) : l;
-        if (q > 0) { mark(kind, k, q, {room: r.id, silent: true}); any += q; }
-        if (q < l) skipped += l - q;
-      }
-      if (any) toast(skipped ? `Кабинет ${r.name}: отмечено ${any} шт, ещё ${skipped} не нарезаны` : `Кабинет ${r.name}: всё отмечено`);
-      else if (skipped) toast("В этом кабинете ещё нечего клеить — окна не нарезаны");
-    };
+    const rd = doneBy(kind, r.id), reset = doneBy(kind, r.id, resetWho());
+    const rows = Object.keys(r.items).filter(k => r.items[k] > 0).sort(byNum).map(k => {
+      const n = r.items[k], d = rd[k] || 0, left = Math.max(0, n - d);
+      return {k, n, d, left, available: kind === "glue" ? canGlueIn(r, k) : left};
+    });
+    if (rows.length) hasWindows = true;
+    const visible = progressRows(kind, rows);
+    if (!visible.length) continue;
+    hasVisible = true;
+    const rn = rows.reduce((s, {n}) => s + n, 0);
+    const rdone = rows.reduce((s, {d, n}) => s + Math.min(d, n), 0);
     const card = el("div", {className: "card"},
-      el("div", {className: "row"}, el("h2", {className: "grow", textContent: `Кабинет ${r.name}`}), el("span", {className: "size", textContent: `${rdone} из ${rn}`}), statusPill(rdone, rn)),
+      el("div", {className: "row"}, el("h2", {className: "grow", textContent: `Кабинет ${r.name}`}),
+        el("span", {className: "size", textContent: `${rdone} из ${rn}`}), statusPill(rdone, rn)),
       bar(rdone, rn));
-    if (!nums.length) card.append(el("div", {className: "empty", textContent: "В кабинете нет окон."}));
-    if (kind === "glue") {
-      const rc = doneBy("cut", r.id), tc = doneBy("cut"), tg = doneBy("glue");
-      let ready = 0, wait = 0;
-      for (const k of nums) {
-        const t = types[k] || {}, n = r.items[k], d = rd[k] || 0, l = n - d;
-        // сколько нарезано для этого кабинета; если резали без кабинета — берём свободный общий запас
-        const roomCut = Math.min(n, rc[k] || 0);
-        const freePool = freeCut(k);
-        const canGlue = canGlueIn(r, k);
-        const st = l <= 0 ? "done" : canGlue > 0 ? "ready" : "wait";
-        if (st === "ready") ready += canGlue; if (st !== "done") wait += Math.max(0, l - canGlue);
-        const tag = st === "done" ? el("span", {className: "tag done", textContent: "✓ Наклеено"})
-                  : st === "ready" ? el("span", {className: "tag ready", textContent: `Можно клеить: ${canGlue}`})
-                  : el("span", {className: "tag wait", textContent: "Ждёт нарезки"});
-        const cutInfo = st === "done" ? "" : rc[k] ? `Нарезано для кабинета: ${roomCut} из ${n}` : (tc[k] ? `Нарезано по объекту, свободно: ${freePool}` : "Ещё не нарезано");
-        const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || canGlue <= 0;
-        const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { const q = canGlueIn(r, k); if (q > 0) mark(kind, k, q, {room: r.id}); }; all.disabled = !allowed(kind) || canGlue <= 0;
-        const rs = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"}); rs.disabled = !allowed(kind) || (doneBy(kind, r.id, resetWho())[k] || 0) <= 0;
-        rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id, resetWho())[k] || 0; if (cur > 0) mark(kind, k, -cur, {reset: true, room: r.id}); });
-        card.append(el("div", {className: "gitem st-" + st},
-          el("div", {className: "row"}, el("span", {className: "code", textContent: code(k)}), el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}), el("span", {className: "grow"}), tag),
-          el("div", {className: "pnums"}, el("span", {className: "done"}, "Наклеено ", el("b", {textContent: `${d}/${n}`})), cutInfo ? el("span", {textContent: cutInfo}) : ""),
-          el("div", {className: "row"}, p1, all, el("span", {className: "grow"}), rs)));
+
+    for (const {k, n, d, left, available} of visible) {
+      const actions = el("div", {className: "pact"});
+      if (available > 0) {
+        const p1 = el("button", {className: "sec", textContent: "+1", disabled: !canMark});
+        p1.onclick = () => mark(kind, k, 1, {room: r.id});
+        const cap = Math.min(available, markLimit);
+        const all = el("button", {textContent: markLabel(cap), disabled: !canMark});
+        all.onclick = () => mark(kind, k, cap, {room: r.id});
+        actions.append(p1, all);
       }
-      if (nums.length) card.insertBefore(el("div", {className: "legend"},
-        el("span", {className: "tag ready", textContent: `Можно клеить: ${ready}`}),
-        el("span", {className: "tag wait", textContent: `Ждут нарезки: ${wait}`}),
-        el("span", {className: "tag done", textContent: `Наклеено: ${rdone}`})), card.children[2] || null);
+      if (reset[k] > 0) {
+        const rs = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои", disabled: !canMark});
+        rs.onclick = () => confirmTap(rs, () => {
+          const cur = doneBy(kind, r.id, resetWho())[k] || 0;
+          if (cur > 0) mark(kind, k, -cur, {reset: true, room: r.id});
+        });
+        actions.append(rs);
+      }
+      const nums = el("div", {className: "pnums"},
+        el("span", {className: "done"}, KIND[kind].verb + " ", el("b", {textContent: `${d} из ${n}`})));
+      if (kind === "glue" && available > 0 && available < left) nums.append(el("span", {textContent: `Ждут нарезки ${left - available} шт.`}));
+      const state = left <= 0 ? "done" : available > 0 ? "ready" : "wait";
+      card.append(el("div", {className: "gitem st-" + state},
+        progressWindow(kind, k, types[k], left, available, d, n),
+        nums, actions.childElementCount ? actions : ""));
+    }
+
+    const batch = visible.filter(row => row.available > 0).map(({k, available}) => ({k, q: Math.min(available, markLimit)}));
+    if (batch.length > 1) {
+      const total = batch.reduce((s, {q}) => s + q, 0);
+      const allRoom = el("button", {className: "sec", textContent: `По кабинету: ${markLabel(total).toLowerCase()}`, disabled: !canMark});
+      allRoom.onclick = async () => {
+        const results = await Promise.all(batch.map(({k, q}) => mark(kind, k, q, {room: r.id, silent: true})));
+        const saved = batch.reduce((s, {q}, i) => s + (results[i] ? q : 0), 0);
+        if (saved) toast(`Кабинет ${r.name}: отмечено ${saved} из ${total} шт.`);
+      };
       card.append(el("div", {className: "row"}, allRoom));
-      box.append(card);
-      continue;
     }
-    for (const k of nums) {
-      const t = types[k] || {}, n = r.items[k], d = rd[k] || 0, l = n - d;
-      const p1 = el("button", {className: "sec", textContent: "+1"}); p1.onclick = () => mark(kind, k, 1, {room: r.id}); p1.disabled = !allowed(kind) || l <= 0;
-      const all = el("button", {className: "sec", textContent: "Все"}); all.onclick = () => { if (l > 0) mark(kind, k, l, {room: r.id}); }; all.disabled = !allowed(kind) || l <= 0;
-      const rs = el("button", {className: "link", textContent: canResetAll() ? "Сбросить" : "Отменить мои"}); rs.disabled = !allowed(kind) || (doneBy(kind, r.id, resetWho())[k] || 0) <= 0;
-      rs.onclick = () => confirmTap(rs, () => { const cur = doneBy(kind, r.id, resetWho())[k] || 0; if (cur > 0) mark(kind, k, -cur, {reset: true, room: r.id}); });
-      card.append(el("div", {className: "item"},
-        el("span", {className: "code", textContent: code(k)}),
-        el("span", {className: "size", textContent: t.w ? `${cm(t.w)}×${cm(t.h)}` : ""}),
-        el("span", {className: "grow"}),
-        el("span", {className: "code", style: `font-size:14px;color:var(${l <= 0 ? "--ok" : "--ink"})`, textContent: `${d}/${n}`}),
-        p1, all, rs));
-    }
-    card.append(el("div", {className: "row"}, allRoom));
     box.append(card);
   }
+  if (!hasVisible) box.append(el("div", {className: "card"}, el("div", {className: "empty", textContent: progressEmpty(kind, hasWindows)})));
 }
 
 let pinned = null;

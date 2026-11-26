@@ -110,7 +110,7 @@ service cloud.firestore {
         allow delete: if isManager();
       }
       // Отметки нарезки и оклейки: только своим именем, только с нужным правом,
-      // разумное количество и только в свою открытую смену; владелец может работать без смены
+      // разумное количество и только в свою открытую смену
       match /log/{l} {
         allow read: if approved();
         allow create: if request.resource.data.kind in ['cut', 'glue']
@@ -118,7 +118,7 @@ service cloud.firestore {
           && request.resource.data.by == request.auth.uid
           && request.resource.data.q is int
           && request.resource.data.q >= -500 && request.resource.data.q <= 500
-          && (('shift' in request.resource.data) ? ownOpenShift(request.resource.data.shift) : isOwner());
+          && ('shift' in request.resource.data) && ownOpenShift(request.resource.data.shift);
         allow delete: if isManager();
       }
     }
