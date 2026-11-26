@@ -364,12 +364,15 @@ function renderAdmin(){
   box.append(uc);
 
   // смены
-  const sc = el("div", {className: "card"}, el("h2", {textContent: "Смены и оплата"}));
-  const per = el("select", {id: "perSel"});
+  const summary = el("section", {className: "card", id: "staffSummary"},
+    el("h2", {textContent: "Итоги по сотрудникам"}));
+  const recent = el("section", {className: "card", id: "recentShifts"},
+    el("h2", {textContent: "Последние смены"}));
+  const per = el("select", {id: "perSel", ariaLabel: "Период для итогов и смен"});
   for (const [v, t] of [["1", "Сегодня"], ["7", "7 дней"], ["30", "30 дней"], ["all", "Всё время"]]) per.append(el("option", {value: v, textContent: t}));
   per.value = adminPeriod; per.onchange = () => { adminPeriod = per.value; render(); };
   const rb = el("button", {className: "sec", textContent: "Пересчитать объёмы"}); rb.onclick = loadAllWork;
-  sc.append(el("div", {className: "row"}, per, rb));
+  box.append(el("h2", {textContent: "Смены и оплата"}), el("div", {className: "row"}, per, rb), summary, recent);
   const from = adminPeriod === "all" ? 0 : (adminPeriod === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(adminPeriod) * 864e5);
   const ss = shifts.filter(s => s.start >= from).sort((a, b) => b.start - a.start);
   // итоги по людям
@@ -382,7 +385,10 @@ function renderAdmin(){
     }
     t.n++; t.ms += (s.end || Date.now()) - s.start; t.cut += w.cut; t.glue += w.glue; t.pay += shiftPay(s) + (s.bonus || 0);
   }
-  if (!ss.length) sc.append(el("div", {className: "empty", textContent: "За этот период смен нет."}));
+  if (!ss.length) {
+    summary.append(el("div", {className: "empty", textContent: "За этот период итогов нет."}));
+    recent.append(el("div", {className: "empty", textContent: "За этот период смен нет."}));
+  }
   else {
     const tb = el("table", {}, el("thead", {}, el("tr", {}, ...["Сотрудник", "Смен", "Часы", "Нарезка", "Оклейка", "К оплате"].map((h, i) => el("th", {className: i ? "n" : "", textContent: h})))));
     const tbody = el("tbody");
@@ -408,13 +414,13 @@ function renderAdmin(){
     tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: total})));
     tb.append(tbody);
     cards.append(el("div", {className: "staff-report-heading"}, el("b", {textContent: "Всего к оплате"}), el("b", {className: "money", textContent: total})));
-    sc.append(el("div", {className: "scroll staff-report-table"}, tb), cards);
+    summary.append(el("div", {className: "scroll staff-report-table"}, tb), cards);
     const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
     cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезано окон\tОклеено окон\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
       const w = shiftWorkOf(s), pay = shiftPay(s);
       return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), countFor(s,"cut") ?? "", countFor(s,"glue") ?? "", m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
     })).join("\n"), "Смены скопированы — вставьте в Excel");
-    sc.append(cp);
+    recent.append(cp);
   }
   for (const s of ss) {
     const ref = F.doc(fs, "shifts/" + s.id);
@@ -443,9 +449,8 @@ function renderAdmin(){
       try { await finishShift(s); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
     const dl = el("button", {className: "link", textContent: "Удалить"}); dl.onclick = () => confirmTap(dl, async () => { try { await F.deleteDoc(ref); } catch(e) { toast(errMsg(e)); } });
     act.append(el("span", {className: "grow"}), dl);
-    row.append(act); sc.append(row);
+    row.append(act); recent.append(row);
   }
-  box.append(sc);
 
   // резервная копия
   const bk = el("button", {className: "sec", textContent: "Скачать копию базы"});
