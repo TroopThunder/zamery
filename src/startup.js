@@ -49,6 +49,13 @@ let registrationDraft;
 const registrationKey = "glixpro-email-registration";
 const rememberedAccountsKey = "glixpro-remembered-accounts";
 const accountSwitchKey = "glixpro-account-switch";
+const activeAccountSlotKey = "glixpro-active-account-slot";
+const accountSlotCount = 8;
+let activeAccountSlot = 0;
+try {
+  const storedSlot = Number(localStorage.getItem(activeAccountSlotKey));
+  if (Number.isInteger(storedSlot) && storedSlot >= 0 && storedSlot < accountSlotCount) activeAccountSlot = storedSlot;
+} catch(e) {}
 try { registrationDraft = JSON.parse(sessionStorage.getItem(registrationKey)); } catch(e) {}
 function readRememberedAccounts(){
   try {
@@ -59,18 +66,71 @@ function readRememberedAccounts(){
 function saveRememberedAccounts(accounts){
   try { localStorage.setItem(rememberedAccountsKey, JSON.stringify(accounts)); } catch(e) {}
 }
+function setActiveAccountSlot(slot){
+  activeAccountSlot = slot;
+  try { localStorage.setItem(activeAccountSlotKey, String(slot)); } catch(e) {}
+}
+function findFreeAccountSlot(){
+  const accounts = readRememberedAccounts();
+  const used = new Set(accounts.map(account => account.slot).filter(slot => Number.isInteger(slot)));
+  used.add(activeAccountSlot);
+  for (let slot = 0; slot < accountSlotCount; slot++) if (!used.has(slot)) return slot;
+  return -1;
+}
+function reserveAccountSlot(account){
+  if (Number.isInteger(account?.slot) && account.slot >= 0 && account.slot < accountSlotCount) return account.slot;
+  const slot = findFreeAccountSlot();
+  if (slot < 0) return -1;
+  saveRememberedAccounts(readRememberedAccounts().map(item => item.uid === account.uid ? {...item, slot, hasSession: false} : item));
+  return slot;
+}
+function updateAccountSession(uid, hasSession, slot = activeAccountSlot){
+  if (!uid) return;
+  const accounts = readRememberedAccounts();
+  if (!accounts.some(account => account.uid === uid)) return;
+  saveRememberedAccounts(accounts.map(account => account.uid === uid ? {...account, slot, hasSession} : account));
+}
+function firebaseSessionForSlot(slot){
+  const appName = slot === 0 ? "[DEFAULT]" : `glixpro-account-${slot}`;
+  const existing = getApps().find(app => app.name === appName);
+  const app = existing || (slot === 0 ? initializeApp(FIREBASE_CONFIG) : initializeApp(FIREBASE_CONFIG, appName));
+  const sessionAuth = A.getAuth(app);
+  sessionAuth.languageCode = "ru";
+  let sessionFs;
+  try { sessionFs = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
+  catch(e) { sessionFs = F.getFirestore(app); }
+  return {app, auth: sessionAuth, fs: sessionFs};
+}
+async function clearAccountSession(slot, expectedUid){
+  if (!Number.isInteger(slot) || slot < 0 || slot >= accountSlotCount) return;
+  try {
+    const session = firebaseSessionForSlot(slot);
+    if (typeof session.auth.authStateReady === "function") await session.auth.authStateReady();
+    if (!expectedUid || session.auth.currentUser?.uid === expectedUid) await A.signOut(session.auth);
+  } catch(e) {}
+}
 function rememberAccount(user, identifier, displayName){
   if (!user || !user.uid) return;
-  const accounts = readRememberedAccounts();
+  let accounts = readRememberedAccounts();
   const previous = accounts.find(account => account.uid === user.uid);
+  for (const duplicate of accounts.filter(account => account.uid === user.uid && account.slot !== activeAccountSlot)) {
+    void clearAccountSession(duplicate.slot, user.uid);
+  }
+  const previousSlotUsers = accounts.filter(account => account.uid !== user.uid && account.slot === activeAccountSlot);
+  if (previousSlotUsers.length) {
+    accounts = accounts.map(account => account.slot === activeAccountSlot && account.uid !== user.uid
+      ? {...account, slot: null, hasSession: false} : account);
+  }
   const email = user.email || previous?.email || "";
   const account = {
     uid: user.uid,
     email,
     identifier: isRealEmail(email) ? email : (identifier || previous?.identifier || displayName || ""),
-    name: displayName || previous?.name || user.displayName || ""
+    name: displayName || previous?.name || user.displayName || "",
+    slot: activeAccountSlot,
+    hasSession: true
   };
-  saveRememberedAccounts([account, ...accounts.filter(item => item.uid !== user.uid)].slice(0, 8));
+  saveRememberedAccounts([account, ...accounts.filter(item => item.uid !== user.uid)].slice(0, accountSlotCount));
   renderRememberedAccounts();
 }
 function renderRememberedAccounts(){
@@ -98,7 +158,7 @@ function renderRememberedAccounts(){
       const switchButton = document.createElement("button");
       switchButton.type = "button";
       switchButton.className = "sec";
-      switchButton.textContent = "Переключить";
+      switchButton.textContent = account.hasSession ? "Переключить" : "Войти";
       switchButton.addEventListener("click", () => beginAccountSwitch(account));
       actions.append(switchButton);
       const removeButton = document.createElement("button");
@@ -106,7 +166,8 @@ function renderRememberedAccounts(){
       removeButton.className = "link";
       removeButton.textContent = "Убрать";
       removeButton.setAttribute("aria-label", `Убрать ${account.name || account.identifier} из списка`);
-      removeButton.addEventListener("click", () => {
+      removeButton.addEventListener("click", async () => {
+        await clearAccountSession(account.slot, account.uid);
         saveRememberedAccounts(readRememberedAccounts().filter(item => item.uid !== account.uid));
         renderRememberedAccounts();
       });
@@ -118,12 +179,32 @@ function renderRememberedAccounts(){
 }
 async function beginAccountSwitch(account){
   try {
-    sessionStorage.setItem(accountSwitchKey, JSON.stringify(account || {}));
-    await A.signOut(auth);
+    if (!account) {
+      const slot = findFreeAccountSlot();
+      if (slot < 0) { showAccountMessage("accountsMsg", "Сохранено 8 аккаунтов. Уберите один из списка, чтобы добавить другой."); return; }
+      sessionStorage.setItem(accountSwitchKey, JSON.stringify({intent: "add", slot}));
+      setActiveAccountSlot(slot);
+      location.reload();
+      return;
+    }
+    if (account.uid === myId) return;
+    const slot = reserveAccountSlot(account);
+    if (slot < 0) { showAccountMessage("accountsMsg", "Нет свободного места для этого аккаунта. Уберите ненужный аккаунт и повторите."); return; }
+    const session = firebaseSessionForSlot(slot);
+    if (typeof session.auth.authStateReady === "function") await session.auth.authStateReady();
+    if (account.hasSession && session.auth.currentUser?.uid === account.uid) {
+      sessionStorage.removeItem(accountSwitchKey);
+      setActiveAccountSlot(slot);
+      location.reload();
+      return;
+    }
+    if (session.auth.currentUser) await A.signOut(session.auth);
+    updateAccountSession(account.uid, false, slot);
+    sessionStorage.setItem(accountSwitchKey, JSON.stringify({...account, slot, intent: "login"}));
+    setActiveAccountSlot(slot);
     location.reload();
   } catch(e) {
-    try { sessionStorage.removeItem(accountSwitchKey); } catch(error) {}
-    showAccountMessage("accountsMsg", "Не удалось выйти из текущего аккаунта. Повторите попытку.");
+    showAccountMessage("accountsMsg", "Не удалось переключить аккаунт. Повторите попытку.");
   }
 }
 function saveRegistrationDraft(draft){
@@ -420,7 +501,11 @@ $("passwordForm").onsubmit = async e => {
     button.disabled = false;
   }
 };
-const logout = async () => { try { await A.signOut(auth); } catch(e) {} location.reload(); };
+const logout = async () => {
+  updateAccountSession(myId, false);
+  try { await A.signOut(auth); } catch(e) {}
+  location.reload();
+};
 $("logoutBtn").onclick = logout; $("waitLogout").onclick = logout;
 $("addAccount").onclick = () => beginAccountSwitch(null);
 
@@ -502,20 +587,22 @@ function startData(){
 if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
   view("loadView"); $("loadMessage").textContent = "Сайт ещё не подключён к Firebase: не указаны ключи проекта.";
 } else {
-  const fapp = initializeApp(FIREBASE_CONFIG);
-  auth = A.getAuth(fapp);
-  auth.languageCode = "ru";
-  try { fs = F.initializeFirestore(fapp, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
-  catch(e) { fs = F.getFirestore(fapp); }
+  const activeSession = firebaseSessionForSlot(activeAccountSlot);
+  auth = activeSession.auth;
+  fs = activeSession.fs;
   let userSubs = [];
   A.onAuthStateChanged(auth, u => {
     userSubs.forEach(f => f()); userSubs = [];
     if (!u) {
+      const oldAccount = readRememberedAccounts().find(account => account.slot === activeAccountSlot);
+      if (oldAccount) updateAccountSession(oldAccount.uid, false);
       myId = null; me = null; view("authView"); setAuthMode("login");
       let switchAccount = null;
       try { switchAccount = JSON.parse(sessionStorage.getItem(accountSwitchKey)); } catch(e) {}
-      $("aName").value = switchAccount?.identifier || "";
-      if (switchAccount) $("aMsg").textContent = switchAccount.uid ? "Введите пароль выбранного аккаунта." : "Войдите в другой аккаунт, чтобы добавить его в список.";
+      $("aName").value = switchAccount?.identifier || oldAccount?.identifier || "";
+      if (switchAccount?.intent === "login") $("aMsg").textContent = "Для этого аккаунта нет сохранённого сеанса. Введите пароль, чтобы войти.";
+      else if (switchAccount?.intent === "add") $("aMsg").textContent = "Войдите в другой аккаунт — его сеанс сохранится на этом устройстве.";
+      else if (oldAccount) $("aMsg").textContent = "Сохранённый сеанс завершился. Введите пароль, чтобы войти снова.";
       return;
     }
     if (dataStarted && myId && myId !== u.uid) { location.reload(); return; }

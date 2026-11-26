@@ -110,7 +110,7 @@ rep('''    <div class="card" id="summaryFloors"></div>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
       <h2>Аккаунты на этом устройстве</h2>
-      <p class="empty">Для переключения потребуется пароль. Пароли не сохраняются.</p>
+      <p class="empty">Вход сохраняется в этом браузере без паролей. На общем устройстве нажмите «Убрать», чтобы завершить сеанс аккаунта.</p>
       <div id="rememberedAccounts" class="remembered-accounts" aria-live="polite"></div>
       <button type="button" class="sec" id="addAccount">Добавить аккаунт</button>
       <div class="msg hidden" id="accountsMsg" role="status"></div>
@@ -229,7 +229,7 @@ rep('''  <button class="navitem" id="logoutBtn">Выйти</button>''','''  <but
 # ---------- SCRIPT ----------
 rep('const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все вкладки"};','const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все работы", manager: "Управление"};')
 rep('<script>\nconst $ = id => document.getElementById(id);','''<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import * as A from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import * as F from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
