@@ -183,6 +183,13 @@ function initShiftTotals(tab){
   tab.append(card,el("div",{id:"shiftDetails",className:"account-form"}));
   for (const id of ["shiftPeriod","shiftFrom","shiftTo"]) $(id).onchange = renderShiftTotals;
 }
+function pieces(n){
+  const last = n % 10, teen = n % 100;
+  if (teen >= 11 && teen <= 14) return n + " штук";
+  if (last === 1) return n + " штука";
+  if (last >= 2 && last <= 4) return n + " штуки";
+  return n + " штук";
+}
 function renderShiftTotals(){
   const out = $("shiftTotals"); out.replaceChildren();
   const range = $("shiftPeriod").value === "range";
@@ -203,12 +210,12 @@ function renderShiftTotals(){
     }
     missing ||= incomplete; totalOps += count; totalArea += area;
     out.append(el("div",{className:"srow"},el("b",{textContent:label}),el("div",{textContent:
-      (incomplete ? "Количество уточняется" : count+" оп.")+" · "+m2(area)+" м² · "+money(pay)+" ₽"})));
+      (incomplete ? "Количество уточняется" : pieces(count))+" · "+m2(area)+" м² · "+money(pay)+" ₽"})));
   }
   const bonus = list.reduce((v,s)=>v+(s.bonus || 0),0);
   const pay = list.reduce((v,s)=>v+(s.sum ?? shiftPay(s)),0);
   if (bonus) out.append(el("div",{textContent:"Бонусы и штрафы: "+money(bonus)+" ₽"}));
-  out.append(el("b",{textContent:"Итого: "+(missing ? "" : totalOps+" оп. · ")+m2(totalArea)+" м² · "+money(pay+bonus)+" ₽"}));
+  out.append(el("b",{textContent:"Итого: "+(missing ? "" : pieces(totalOps)+" · ")+m2(totalArea)+" м² · "+money(pay+bonus)+" ₽"}));
   if (missing) {
     out.append(el("div",{className:"empty",textContent:"В старых сменах количество не сохранялось. Проверка использует отметки и площадь смены. При неполном журнале количество недоступно."}));
     const check = el("button",{className:"sec",disabled:readingLegacy,textContent:readingLegacy ? "Проверяю…" : "Проверить старые отметки"});
