@@ -387,8 +387,8 @@ function renderAdmin(){
     for (const [uid, t] of Object.entries(tot)) {
       all += t.pay;
       tbody.append(el("tr", {}, el("td", {textContent: (usersMap[uid] || {}).name || names[uid] || "—"}), el("td", {className: "n", textContent: t.n}),
-        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: (t.cutCount == null ? "нет данных о количестве" : pieces(t.cutCount)) + " · " + m2(t.cut) + " м²"}),
-        el("td", {className: "n", textContent: (t.glueCount == null ? "нет данных о количестве" : pieces(t.glueCount)) + " · " + m2(t.glue) + " м²"}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
+        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: (t.cutCount ?? "—") + "*" + m2(t.cut)}),
+        el("td", {className: "n", textContent: (t.glueCount ?? "—") + "*" + m2(t.glue)}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
     }
     tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: money(all) + " ₽"})));
     tb.append(tbody);
