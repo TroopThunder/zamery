@@ -125,19 +125,25 @@ service cloud.firestore {
 
 
     // Смены: сотрудник видит и закрывает только свои; цену подставить нельзя — она проверяется здесь
+    function validShiftCounts(d) {
+      return (!('cutCount' in d) && !('glueCount' in d)) ||
+        (d.cutCount is int && d.cutCount >= 0 && d.glueCount is int && d.glueCount >= 0);
+    }
     match /shifts/{sid} {
       allow read: if isManager() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if approved()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.end == null
         && request.resource.data.bonus == 0
+        && validShiftCounts(request.resource.data)
         && request.resource.data.priceCut == expPrice('cut')
         && request.resource.data.priceGlue == expPrice('glue');
       allow update: if isManager() || (signedIn()
         && resource.data.uid == request.auth.uid
         && resource.data.end == null
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'cutArea', 'glueArea', 'sum', 'cutCount', 'glueCount'])
         && request.resource.data.end is number
+        && validShiftCounts(request.resource.data)
         && sumMatches(request.resource.data));
       allow delete: if isManager();
     }

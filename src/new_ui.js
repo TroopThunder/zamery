@@ -42,7 +42,7 @@ async function objTypes(oid){
   return typesCache[oid] = t;
 }
 async function loadShiftWork(s, fresh = false){
-  const res = {cut: 0, glue: 0};
+  const res = {cut: 0, glue: 0, cutCount: 0, glueCount: 0};
   const read = fresh ? readConfirmedDocs : F.getDocs;
   const list = fresh ? (await read(F.collection(fs, "objects"))).docs : objects;
   for (const o of list) {
@@ -54,10 +54,15 @@ async function loadShiftWork(s, fresh = false){
     q.forEach(d => {
       const x = d.data(), tp = t[x.num];
       if (fresh && (!tp || !Number.isFinite(tp.w * tp.h))) throw {code: "shift-missing-size"};
-      if (tp && x.kind in res) res[x.kind] += x.q * tp.w * tp.h / 10000;
+      if (tp && (x.kind === "cut" || x.kind === "glue")) {
+        res[x.kind] += x.q * tp.w * tp.h / 10000;
+        res[x.kind + "Count"] += x.q;
+      }
     });
   }
   res.cut = Math.max(0, res.cut); res.glue = Math.max(0, res.glue);
+  res.cutCount = Math.max(0, res.cutCount);
+  res.glueCount = Math.max(0, res.glueCount);
   shiftWork[s.id] = res;
   return res;
 }
@@ -122,13 +127,16 @@ async function closeShift(){
   if (pendingMarks) { toast("Дождитесь сохранения отметок и закройте смену снова."); return; }
   closingShift = true;
   try {
-    const w = await loadShiftWork(s, true);
-    const cutArea = Math.round(w.cut * 10000) / 10000, glueArea = Math.round(w.glue * 10000) / 10000;
-    const sum = Math.round((cutArea * s.priceCut + glueArea * s.priceGlue) * 100) / 100;
-    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea, glueArea, sum});
+    await finishShift(s);
     toast("Смена закрыта");
   } catch(e) { toast(errMsg(e)); }
   finally { closingShift = false; }
+}
+async function finishShift(s){
+    const w = await loadShiftWork(s, true);
+    const cutArea = Math.round(w.cut * 10000) / 10000, glueArea = Math.round(w.glue * 10000) / 10000;
+    const sum = Math.round((cutArea * s.priceCut + glueArea * s.priceGlue) * 100) / 100;
+    await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea, glueArea, sum, cutCount:w.cutCount, glueCount:w.glueCount});
 }
 
 function shiftStats(s){
@@ -146,9 +154,80 @@ function shiftStats(s){
     s.bonusNote ? el("div", {className: "empty", textContent: (bonus < 0 ? "Причина штрафа: " : "Комментарий к бонусу: ") + s.bonusNote}) : "");
 }
 
+const legacyCounts = new Map();
+let readingLegacy = false;
+function selectedShifts(){
+  const period = $("shiftPeriod").value, now = new Date();
+  const from = $("shiftFrom").value, to = $("shiftTo").value;
+  const start = period === "month" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    : period === "range" && from ? new Date(from+"T00:00:00").getTime() : -Infinity;
+  let end = Infinity;
+  if (period === "month") end = new Date(now.getFullYear(), now.getMonth()+1, 1).getTime();
+  if (period === "range" && to) {
+    const next = new Date(to+"T00:00:00"); next.setDate(next.getDate()+1); end = next.getTime();
+  }
+  return shifts.filter(s => s.uid === myId && s.end && s.end >= start && s.end < end);
+}
+function countFor(s,kind){
+  const saved = s[kind+"Count"];
+  if (Number.isInteger(saved)) return saved;
+  const w = legacyCounts.get(s.id);
+  return w && Math.abs(w[kind]-(s[kind+"Area"] || 0)) < 0.00011 ? w[kind+"Count"] : null;
+}
+function initShiftTotals(tab){
+  const card = el("div",{className:"card"});
+  card.innerHTML = `<h2>Мой итог</h2><label for="shiftPeriod">Период по дате закрытия смены</label>
+    <select id="shiftPeriod"><option value="all">За всё время</option><option value="month">Этот месяц</option><option value="range">Выбрать даты</option></select>
+    <div id="shiftDates" class="row hidden"><label>С <input type="date" id="shiftFrom"></label><label>По <input type="date" id="shiftTo"></label></div>
+    <div id="shiftTotals" class="account-form" aria-live="polite"></div>`;
+  tab.append(card,el("div",{id:"shiftDetails",className:"account-form"}));
+  for (const id of ["shiftPeriod","shiftFrom","shiftTo"]) $(id).onchange = renderShiftTotals;
+}
+function renderShiftTotals(){
+  const out = $("shiftTotals"); out.replaceChildren();
+  const range = $("shiftPeriod").value === "range";
+  $("shiftDates").classList.toggle("hidden", !range);
+  if (range && $("shiftTo").value && $("shiftFrom").value > $("shiftTo").value) {
+    out.textContent = "Дата окончания должна быть не раньше даты начала."; return;
+  }
+  const list = selectedShifts();
+  if (!list.length) { out.textContent = "За этот период нет закрытых смен."; return; }
+  let totalOps = 0, missing = false, totalArea = 0;
+  for (const [kind,label] of [["cut","Нарезка"],["glue","Оклейка"]]){
+    let count = 0, area = 0, pay = 0, incomplete = false;
+    for (const s of list){
+      const n = countFor(s,kind);
+      if (n === null) incomplete = true; else count += n;
+      const sqm = s[kind+"Area"] || 0;
+      area += sqm; pay += sqm * (s[kind === "cut" ? "priceCut" : "priceGlue"] || 0);
+    }
+    missing ||= incomplete; totalOps += count; totalArea += area;
+    out.append(el("div",{className:"srow"},el("b",{textContent:label}),el("div",{textContent:
+      (incomplete ? "Количество уточняется" : count+" оп.")+" · "+m2(area)+" м² · "+money(pay)+" ₽"})));
+  }
+  const bonus = list.reduce((v,s)=>v+(s.bonus || 0),0);
+  const pay = list.reduce((v,s)=>v+(s.sum ?? shiftPay(s)),0);
+  if (bonus) out.append(el("div",{textContent:"Бонусы и штрафы: "+money(bonus)+" ₽"}));
+  out.append(el("b",{textContent:"Итого: "+(missing ? "" : totalOps+" оп. · ")+m2(totalArea)+" м² · "+money(pay+bonus)+" ₽"}));
+  if (missing) {
+    out.append(el("div",{className:"empty",textContent:"В старых сменах количество не сохранялось. Проверка использует отметки и площадь смены. При неполном журнале количество недоступно."}));
+    const check = el("button",{className:"sec",disabled:readingLegacy,textContent:readingLegacy ? "Проверяю…" : "Проверить старые отметки"});
+    check.onclick = async () => {
+      readingLegacy = true; renderShiftTotals();
+      try {
+        for (const s of list.filter(s=>countFor(s,"cut")===null || countFor(s,"glue")===null))
+          legacyCounts.set(s.id,await loadShiftWork(s,true));
+      } catch(e){ toast(errMsg(e)); }
+      finally { readingLegacy = false; renderShiftTotals(); }
+    };
+    out.append(check);
+  }
+}
 function renderShift(){
-  const box = $("tab-shift"); box.innerHTML = "";
   if (!me) return;
+  if (!$("shiftDetails")) initShiftTotals($("tab-shift"));
+  renderShiftTotals();
+  const box = $("shiftDetails"); box.replaceChildren();
   const card = el("div", {className: "card"});
   if (!myShift) {
     const pr = myPrices();
@@ -325,7 +404,7 @@ function renderAdmin(){
       el("div", {}, el("label", {htmlFor: bt.id, textContent: "Комментарий (за что)"}), bt));
     const act = el("div", {className: "row"}, bs);
     if (!s.end) { const cl = el("button", {className: "link", textContent: "Закрыть смену сейчас"}); cl.onclick = () => confirmTap(cl, async () => {
-      try { const w = await loadShiftWork(s); await F.updateDoc(ref, {end: Date.now(), cutArea: w.cut, glueArea: w.glue, sum: Math.round((w.cut * s.priceCut + w.glue * s.priceGlue) * 100) / 100}); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
+      try { await finishShift(s); toast("Смена закрыта"); } catch(e) { toast(errMsg(e)); } }); act.append(cl); }
     const dl = el("button", {className: "link", textContent: "Удалить"}); dl.onclick = () => confirmTap(dl, async () => { try { await F.deleteDoc(ref); } catch(e) { toast(errMsg(e)); } });
     act.append(el("span", {className: "grow"}), dl);
     row.append(act); sc.append(row);
