@@ -144,7 +144,7 @@ async function finishShift(s){
 }
 
 function reportVolume(count, area){
-  return count == null ? m2(area) + " м²" : count + "*" + m2(area);
+  return (count == null ? "" : count + " шт., ") + m2(area) + " м²";
 }
 function shiftStats(s){
   const w = shiftWorkOf(s);

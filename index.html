@@ -529,7 +529,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 17:59</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 18:08</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -1546,7 +1546,7 @@ async function finishShift(s){
 }
 
 function reportVolume(count, area){
-  return count == null ? m2(area) + " м²" : count + "*" + m2(area);
+  return (count == null ? "" : count + " шт., ") + m2(area) + " м²";
 }
 function shiftStats(s){
   const w = shiftWorkOf(s);
