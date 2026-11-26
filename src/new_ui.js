@@ -143,17 +143,20 @@ async function finishShift(s){
     await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea, glueArea, sum, cutCount:w.cutCount, glueCount:w.glueCount});
 }
 
-function shiftQuantity(s,kind){
-  const count = countFor(s,kind);
-  return count == null ? "нет данных о количестве" : pieces(count);
+function reportVolume(count, area){
+  return count == null ? m2(area) + " м²" : count + "*" + m2(area);
 }
 function shiftStats(s){
   const w = shiftWorkOf(s);
   const pay = shiftPay(s), bonus = s.bonus || 0;
-  return el("div", {className: "srow", style: "border:0;padding:0"},
-    el("div", {className: "pnums"},
-      el("span", {}, "Нарезка ", el("b", {textContent: `${shiftQuantity(s,"cut")} · ${m2(w.cut)} м²`}), ` × ${money(s.priceCut)} ₽`),
-      el("span", {}, "Оклейка ", el("b", {textContent: `${shiftQuantity(s,"glue")} · ${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
+  const work = el("div", {className: "shift-work"});
+  for (const [kind, label, price] of [["cut", "Нарезка", s.priceCut], ["glue", "Оклейка", s.priceGlue]]) {
+    const count = countFor(s, kind);
+    const volume = (count == null ? "" : pieces(count) + " · ") + m2(w[kind]) + " м²";
+    work.append(el("div", {className: "shift-work-line"},
+      el("span", {textContent: label}), el("div", {}, el("b", {textContent: volume}), " × " + money(price) + " ₽/м²")));
+  }
+  return el("div", {className: "srow", style: "border:0;padding:0"}, work,
     el("div", {className: "pnums"},
       el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
       bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
@@ -383,16 +386,29 @@ function renderAdmin(){
   else {
     const tb = el("table", {}, el("thead", {}, el("tr", {}, ...["Сотрудник", "Смен", "Часы", "Нарезка", "Оклейка", "К оплате"].map((h, i) => el("th", {className: i ? "n" : "", textContent: h})))));
     const tbody = el("tbody");
+    const cards = el("div", {className: "staff-report-cards"});
     let all = 0;
     for (const [uid, t] of Object.entries(tot)) {
       all += t.pay;
-      tbody.append(el("tr", {}, el("td", {textContent: (usersMap[uid] || {}).name || names[uid] || "—"}), el("td", {className: "n", textContent: t.n}),
-        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: (t.cutCount ?? "—") + "*" + m2(t.cut)}),
-        el("td", {className: "n", textContent: (t.glueCount ?? "—") + "*" + m2(t.glue)}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
+      const name = usersMap[uid]?.name || names[uid] || "—";
+      const hours = (t.ms / 36e5).toFixed(1).replace(".", ",");
+      const cut = reportVolume(t.cutCount, t.cut);
+      const glue = reportVolume(t.glueCount, t.glue);
+      const pay = money(t.pay) + " ₽";
+      tbody.append(el("tr", {}, el("td", {textContent: name}),
+        ...[t.n, hours, cut, glue, pay].map((value, i) => el("td", {className: i === 4 ? "n money" : "n", textContent: value}))));
+      cards.append(el("div", {className: "staff-report-card"},
+        el("div", {className: "staff-report-heading"}, el("b", {textContent: name}), el("b", {className: "money", textContent: pay})),
+        el("div", {className: "empty", textContent: "Смен: " + t.n + " · Часы: " + hours}),
+        el("div", {className: "staff-report-volumes"},
+          el("div", {}, el("span", {textContent: "Нарезка"}), el("b", {textContent: cut})),
+          el("div", {}, el("span", {textContent: "Оклейка"}), el("b", {textContent: glue})))));
     }
-    tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: money(all) + " ₽"})));
+    const total = money(all) + " ₽";
+    tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: total})));
     tb.append(tbody);
-    sc.append(el("div", {className: "scroll"}, tb));
+    cards.append(el("div", {className: "staff-report-heading"}, el("b", {textContent: "Всего к оплате"}), el("b", {className: "money", textContent: total})));
+    sc.append(el("div", {className: "scroll staff-report-table"}, tb), cards);
     const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
     cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезано окон\tОклеено окон\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
       const w = shiftWorkOf(s), pay = shiftPay(s);
