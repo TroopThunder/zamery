@@ -102,11 +102,15 @@ async function loadAllWork(){
       (await F.getDocs(F.collection(fs, `objects/${o.id}/log`))).forEach(d => {
         const x = d.data(); if (!x.shift || !(x.kind === "cut" || x.kind === "glue")) return;
         const tp = t[x.num]; if (!tp) return;
-        (acc[x.shift] = acc[x.shift] || {cut: 0, glue: 0})[x.kind] += x.q * tp.w * tp.h / 10000;
+        const work = acc[x.shift] ||= {cut: 0, glue: 0, cutCount: 0, glueCount: 0};
+        work[x.kind] += x.q * tp.w * tp.h / 10000;
+        work[x.kind + "Count"] += x.q;
       });
     }
-    for (const id of Object.keys(acc)) acc[id] = {cut: Math.max(0, acc[id].cut), glue: Math.max(0, acc[id].glue)};
-    for (const s of shifts) shiftWork[s.id] = logWork[s.id] = acc[s.id] || {cut: 0, glue: 0};
+    for (const work of Object.values(acc)) {
+      for (const key of Object.keys(work)) work[key] = Math.max(0, work[key]);
+    }
+    for (const s of shifts) shiftWork[s.id] = logWork[s.id] = acc[s.id] || {cut: 0, glue: 0, cutCount: 0, glueCount: 0};
     render();
   } catch(e) { toast("Не удалось загрузить объёмы работ: " + errMsg(e)); }
   allWorkBusy = false;
@@ -139,13 +143,17 @@ async function finishShift(s){
     await F.updateDoc(F.doc(fs, "shifts/" + s.id), {end: Date.now(), cutArea, glueArea, sum, cutCount:w.cutCount, glueCount:w.glueCount});
 }
 
+function shiftQuantity(s,kind){
+  const count = countFor(s,kind);
+  return count == null ? "нет данных о количестве" : pieces(count);
+}
 function shiftStats(s){
   const w = shiftWorkOf(s);
   const pay = shiftPay(s), bonus = s.bonus || 0;
   return el("div", {className: "srow", style: "border:0;padding:0"},
     el("div", {className: "pnums"},
-      el("span", {}, "Нарезка ", el("b", {textContent: `${m2(w.cut)} м²`}), ` × ${money(s.priceCut)} ₽`),
-      el("span", {}, "Оклейка ", el("b", {textContent: `${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
+      el("span", {}, "Нарезка ", el("b", {textContent: `${shiftQuantity(s,"cut")} · ${m2(w.cut)} м²`}), ` × ${money(s.priceCut)} ₽`),
+      el("span", {}, "Оклейка ", el("b", {textContent: `${shiftQuantity(s,"glue")} · ${m2(w.glue)} м²`}), ` × ${money(s.priceGlue)} ₽`)),
     el("div", {className: "pnums"},
       el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
       bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
@@ -169,9 +177,10 @@ function selectedShifts(){
   return shifts.filter(s => s.uid === myId && s.end && s.end >= start && s.end < end);
 }
 function countFor(s,kind){
+  if (!s.end) return shiftWork[s.id]?.[kind+"Count"] ?? null;
   const saved = s[kind+"Count"];
   if (Number.isInteger(saved)) return saved;
-  const w = legacyCounts.get(s.id);
+  const w = legacyCounts.get(s.id) || logWork[s.id];
   return w && Math.abs(w[kind]-(s[kind+"Area"] || 0)) < 0.00011 ? w[kind+"Count"] : null;
 }
 function initShiftTotals(tab){
@@ -363,27 +372,31 @@ function renderAdmin(){
   // итоги по людям
   const tot = {};
   for (const s of ss) {
-    const w = shiftWorkOf(s), t = tot[s.uid] || (tot[s.uid] = {n: 0, ms: 0, cut: 0, glue: 0, pay: 0});
+    const w = shiftWorkOf(s), t = tot[s.uid] || (tot[s.uid] = {n: 0, ms: 0, cut: 0, glue: 0, cutCount: 0, glueCount: 0, pay: 0});
+    for (const kind of ["cut","glue"]){
+      const key = kind+"Count", count = countFor(s,kind);
+      t[key] = count == null || t[key] == null ? null : t[key] + count;
+    }
     t.n++; t.ms += (s.end || Date.now()) - s.start; t.cut += w.cut; t.glue += w.glue; t.pay += shiftPay(s) + (s.bonus || 0);
   }
   if (!ss.length) sc.append(el("div", {className: "empty", textContent: "За этот период смен нет."}));
   else {
-    const tb = el("table", {}, el("thead", {}, el("tr", {}, ...["Сотрудник", "Смен", "Часы", "Нарезка м²", "Оклейка м²", "К оплате"].map((h, i) => el("th", {className: i ? "n" : "", textContent: h})))));
+    const tb = el("table", {}, el("thead", {}, el("tr", {}, ...["Сотрудник", "Смен", "Часы", "Нарезка", "Оклейка", "К оплате"].map((h, i) => el("th", {className: i ? "n" : "", textContent: h})))));
     const tbody = el("tbody");
     let all = 0;
     for (const [uid, t] of Object.entries(tot)) {
       all += t.pay;
       tbody.append(el("tr", {}, el("td", {textContent: (usersMap[uid] || {}).name || names[uid] || "—"}), el("td", {className: "n", textContent: t.n}),
-        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: m2(t.cut)}),
-        el("td", {className: "n", textContent: m2(t.glue)}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
+        el("td", {className: "n", textContent: (t.ms / 36e5).toFixed(1).replace(".", ",")}), el("td", {className: "n", textContent: (t.cutCount == null ? "нет данных о количестве" : pieces(t.cutCount)) + " · " + m2(t.cut) + " м²"}),
+        el("td", {className: "n", textContent: (t.glueCount == null ? "нет данных о количестве" : pieces(t.glueCount)) + " · " + m2(t.glue) + " м²"}), el("td", {className: "n money", textContent: money(t.pay) + " ₽"})));
     }
     tbody.append(el("tr", {}, el("td", {colSpan: 5, textContent: "Всего"}), el("td", {className: "n money", textContent: money(all) + " ₽"})));
     tb.append(tbody);
     sc.append(el("div", {className: "scroll"}, tb));
     const cp = el("button", {className: "sec", textContent: "Скопировать смены для Excel"});
-    cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
+    cp.onclick = () => copyText(["Сотрудник\tНачало\tКонец\tЧасы\tНарезано окон\tОклеено окон\tНарезка м²\tЦена нарезки\tОклейка м²\tЦена оклейки\tЗа работу\tБонус/штраф\tКомментарий\tИтого"].concat(ss.map(s => {
       const w = shiftWorkOf(s), pay = shiftPay(s);
-      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
+      return [s.name, dateTime(s.start), s.end ? dateTime(s.end) : "открыта", (((s.end || Date.now()) - s.start) / 36e5).toFixed(2).replace(".", ","), countFor(s,"cut") ?? "", countFor(s,"glue") ?? "", m2(w.cut), money(s.priceCut), m2(w.glue), money(s.priceGlue), money(pay), money(s.bonus || 0), s.bonusNote || "", money(pay + (s.bonus || 0))].join("\t");
     })).join("\n"), "Смены скопированы — вставьте в Excel");
     sc.append(cp);
   }
