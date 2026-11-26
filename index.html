@@ -159,6 +159,16 @@ button:disabled{opacity:.45;cursor:default}
 @media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 4px 12px}
 .account-open #objCard,.account-open #meRow{display:none}
+#drawer .account-footer{margin-top:auto;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.menu-avatar{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;overflow:hidden;background:var(--accent-soft);color:var(--accent)}
+.menu-avatar img{width:100%;height:100%;object-fit:cover}
+.account-caption{min-width:0;display:grid;text-align:left}
+.account-caption b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-caption span{font-size:13px;color:var(--muted)}
+.crop-editor{margin:0;padding:12px;min-width:0;border:1px solid var(--line);border-radius:12px;display:grid;gap:8px}
+.crop-editor label{display:grid;gap:4px}
+.crop-editor input{width:100%;accent-color:var(--accent)}
+#cropView{width:min(100%,192px);height:auto;border-radius:50%;justify-self:center;touch-action:none;cursor:grab}
 .profile-avatar{width:72px;height:72px;border-radius:50%;padding:0;overflow:hidden;background:var(--accent-soft);color:var(--accent);font-size:28px}
 .profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 #profileName{overflow-wrap:anywhere}
@@ -494,7 +504,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 01:24</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 26.11.2026 14:19</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -503,7 +513,14 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
         <input id="avatarFile" type="file" accept="image/*" class="hidden">
         <div class="grow"><h2 id="profileName"></h2><button class="link" id="editName">Изменить имя</button></div>
       </div>
-      <button class="link" id="editAvatar">Изменить фото</button>
+      <div class="row"><button class="link" id="editAvatar">Изменить фото</button><button class="link hidden" id="removeAvatar">Удалить фото</button></div>
+      <fieldset class="hidden crop-editor" id="cropEditor"><legend>Кадрирование фото</legend>
+        <canvas id="cropView" width="256" height="256" aria-label="Предпросмотр аватара"></canvas>
+        <label>Масштаб<input id="cropZoom" type="range" min="1" max="3" step=".01" value="1"></label>
+        <label>По горизонтали<input id="cropX" type="range" min="-1" max="1" step=".01" value="0"></label>
+        <label>По вертикали<input id="cropY" type="range" min="-1" max="1" step=".01" value="0"></label>
+        <div class="row"><button id="cropSave">Сохранить фото</button><button class="sec" id="cropCancel">Отмена</button></div>
+      </fieldset>
       <form id="nameForm" class="account-form hidden">
         <label for="newName">Имя</label><input id="newName" maxlength="60" required>
         <div class="row"><button>Сохранить</button><button type="button" class="sec" id="cancelName">Отмена</button></div>
@@ -567,9 +584,12 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
   <button class="navitem hidden" data-tab="admin" id="navAdmin">Управление</button>
   <div class="navsep"></div>
   <button class="navitem" data-tab="settings">Настройки</button>
-  <button class="navitem" data-tab="account">Аккаунт</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
   <button class="navitem" id="logoutBtn">Выйти</button>
+  <button class="navitem account-footer" data-tab="account">
+    <span class="menu-avatar"><span id="menuInitial"></span><img id="menuPhoto" class="hidden" alt=""></span>
+    <span class="account-caption"><b id="menuName"></b><span>Аккаунт</span></span>
+  </button>
 </nav>
 <div class="toast hidden" id="toast"></div>
 
@@ -2422,26 +2442,79 @@ $("nameForm").onsubmit = async e => {
     showAccountMessage("profileMsg", isLegacyEmail(auth.currentUser.email) ? "Имя сохранено. Для входа используйте прежний логин." : "Имя сохранено.");
   } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить имя. " + errMsg(e)); }
 };
+let cropImage = null, avatarRequest = 0, dragPoint = null;
+function closeCrop(){
+  avatarRequest++;
+  cropImage = dragPoint = null;
+  $("cropEditor").classList.add("hidden");
+}
+function cropSide(){
+  return Math.min(cropImage.width, cropImage.height) / Number($("cropZoom").value);
+}
+function drawCrop(){
+  if (!cropImage) return;
+  const side = cropSide();
+  const x = (cropImage.width-side) * (Number($("cropX").value)+1)/2;
+  const y = (cropImage.height-side) * (Number($("cropY").value)+1)/2;
+  const ctx = $("cropView").getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,256,256);
+  ctx.drawImage(cropImage,x,y,side,side,0,0,256,256);
+}
+for (const id of ["cropZoom","cropX","cropY"]) $(id).oninput = drawCrop;
+$("cropView").onpointerdown = e => {
+  if (!cropImage) return;
+  e.currentTarget.setPointerCapture(e.pointerId);
+  dragPoint = [e.clientX,e.clientY];
+};
+$("cropView").onpointermove = e => {
+  if (!cropImage || !dragPoint || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+  const side = cropSide(), scale = 2*side/e.currentTarget.clientWidth;
+  for (const [id,delta,space] of [["cropX",e.clientX-dragPoint[0],cropImage.width-side],["cropY",e.clientY-dragPoint[1],cropImage.height-side]]){
+    if (space>0) $(id).value = Number($(id).value)-delta*scale/space;
+  }
+  dragPoint = [e.clientX,e.clientY]; drawCrop();
+};
+$("cropView").onlostpointercapture = () => { dragPoint = null; };
+$("cropCancel").onclick = () => { closeCrop(); $("editAvatar").focus(); };
 $("editAvatar").onclick = $("avatarPick").onclick = () => $("avatarFile").click();
 $("avatarFile").onchange = async () => {
-  const file = $("avatarFile").files[0], uid = myId;
+  const file = $("avatarFile").files[0];
   $("avatarFile").value = "";
   if (!file) return;
-  const url = URL.createObjectURL(file);
-  $("editAvatar").disabled = $("avatarPick").disabled = true;
+  closeCrop();
+  const request = avatarRequest, url = URL.createObjectURL(file);
   try {
-    const img = new Image();
-    img.src = url;
+    const img = new Image(); img.src = url;
     await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 192;
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    canvas.getContext("2d").drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 192, 192);
-    await F.setDoc(F.doc(fs, "prefs", uid), {avatar:canvas.toDataURL("image/jpeg", 0.86)}, {merge:true});
-    showAccountMessage("profileMsg", "Фото сохранено.");
-  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить фото. Попробуйте JPG или PNG."); }
-  finally { URL.revokeObjectURL(url); $("editAvatar").disabled = $("avatarPick").disabled = false; }
+    if (request !== avatarRequest) return;
+    cropImage = img;
+    $("cropZoom").value = 1;
+    $("cropX").value = $("cropY").value = 0;
+    $("cropEditor").classList.remove("hidden"); drawCrop(); $("cropZoom").focus();
+  } catch(e){ showAccountMessage("profileMsg","Не удалось открыть фото. Попробуйте JPG или PNG."); }
+  finally { URL.revokeObjectURL(url); }
 };
+async function saveAvatar(remove){
+  const controls = ["editAvatar","avatarPick","removeAvatar","cropEditor"];
+  controls.forEach(id => $(id).disabled = true);
+  try {
+    await F.setDoc(F.doc(fs,"prefs",myId),{avatar:remove ? F.deleteField() : $("cropView").toDataURL("image/jpeg",0.86)},{merge:true});
+    closeCrop(); $("editAvatar").focus();
+    showAccountMessage("profileMsg", remove ? "Фото удалено." : "Фото сохранено.");
+  } catch(e){ showAccountMessage("profileMsg","Не удалось сохранить изменения. Попробуйте ещё раз."); }
+  finally { controls.forEach(id => $(id).disabled = false); }
+}
+$("cropSave").onclick = () => { if (cropImage) saveAvatar(false); };
+$("removeAvatar").onclick = () => { if (confirm("Удалить фото профиля?")) saveAvatar(true); };
+function renderAvatar(avatar){
+  const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
+  for (const [photo,initial] of [["avatarImage","avatarInitial"],["menuPhoto","menuInitial"]]){
+    if (valid) $(photo).src = avatar; else $(photo).removeAttribute("src");
+    $(photo).classList.toggle("hidden",!valid);
+    $(initial).classList.toggle("hidden",valid);
+  }
+  $("removeAvatar").classList.toggle("hidden",!valid);
+}
 function renderAccountEmail(user){
   const legacy = isLegacyEmail(user.email);
   $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
@@ -2602,24 +2675,16 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
     renderAccountEmail(u);
-    $("avatarImage").removeAttribute("src");
-    $("avatarImage").classList.add("hidden");
-    $("avatarInitial").classList.remove("hidden");
-    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => {
-      const avatar = snap.data()?.avatar;
-      const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
-      if (valid) $("avatarImage").src = avatar;
-      $("avatarImage").classList.toggle("hidden", !valid);
-      $("avatarInitial").classList.toggle("hidden", valid);
-    }, () => {}));
+    closeCrop(); renderAvatar(null);
+    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => renderAvatar(snap.data()?.avatar), () => {}));
     loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
-      $("profileName").textContent = me?.name || "";
-      $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
+      $("menuName").textContent = $("profileName").textContent = me?.name || "";
+      $("menuInitial").textContent = $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
       if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();

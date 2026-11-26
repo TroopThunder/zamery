@@ -199,26 +199,79 @@ $("nameForm").onsubmit = async e => {
     showAccountMessage("profileMsg", isLegacyEmail(auth.currentUser.email) ? "Имя сохранено. Для входа используйте прежний логин." : "Имя сохранено.");
   } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить имя. " + errMsg(e)); }
 };
+let cropImage = null, avatarRequest = 0, dragPoint = null;
+function closeCrop(){
+  avatarRequest++;
+  cropImage = dragPoint = null;
+  $("cropEditor").classList.add("hidden");
+}
+function cropSide(){
+  return Math.min(cropImage.width, cropImage.height) / Number($("cropZoom").value);
+}
+function drawCrop(){
+  if (!cropImage) return;
+  const side = cropSide();
+  const x = (cropImage.width-side) * (Number($("cropX").value)+1)/2;
+  const y = (cropImage.height-side) * (Number($("cropY").value)+1)/2;
+  const ctx = $("cropView").getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,256,256);
+  ctx.drawImage(cropImage,x,y,side,side,0,0,256,256);
+}
+for (const id of ["cropZoom","cropX","cropY"]) $(id).oninput = drawCrop;
+$("cropView").onpointerdown = e => {
+  if (!cropImage) return;
+  e.currentTarget.setPointerCapture(e.pointerId);
+  dragPoint = [e.clientX,e.clientY];
+};
+$("cropView").onpointermove = e => {
+  if (!cropImage || !dragPoint || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+  const side = cropSide(), scale = 2*side/e.currentTarget.clientWidth;
+  for (const [id,delta,space] of [["cropX",e.clientX-dragPoint[0],cropImage.width-side],["cropY",e.clientY-dragPoint[1],cropImage.height-side]]){
+    if (space>0) $(id).value = Number($(id).value)-delta*scale/space;
+  }
+  dragPoint = [e.clientX,e.clientY]; drawCrop();
+};
+$("cropView").onlostpointercapture = () => { dragPoint = null; };
+$("cropCancel").onclick = () => { closeCrop(); $("editAvatar").focus(); };
 $("editAvatar").onclick = $("avatarPick").onclick = () => $("avatarFile").click();
 $("avatarFile").onchange = async () => {
-  const file = $("avatarFile").files[0], uid = myId;
+  const file = $("avatarFile").files[0];
   $("avatarFile").value = "";
   if (!file) return;
-  const url = URL.createObjectURL(file);
-  $("editAvatar").disabled = $("avatarPick").disabled = true;
+  closeCrop();
+  const request = avatarRequest, url = URL.createObjectURL(file);
   try {
-    const img = new Image();
-    img.src = url;
+    const img = new Image(); img.src = url;
     await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 192;
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    canvas.getContext("2d").drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 192, 192);
-    await F.setDoc(F.doc(fs, "prefs", uid), {avatar:canvas.toDataURL("image/jpeg", 0.86)}, {merge:true});
-    showAccountMessage("profileMsg", "Фото сохранено.");
-  } catch(e) { showAccountMessage("profileMsg", "Не удалось сохранить фото. Попробуйте JPG или PNG."); }
-  finally { URL.revokeObjectURL(url); $("editAvatar").disabled = $("avatarPick").disabled = false; }
+    if (request !== avatarRequest) return;
+    cropImage = img;
+    $("cropZoom").value = 1;
+    $("cropX").value = $("cropY").value = 0;
+    $("cropEditor").classList.remove("hidden"); drawCrop(); $("cropZoom").focus();
+  } catch(e){ showAccountMessage("profileMsg","Не удалось открыть фото. Попробуйте JPG или PNG."); }
+  finally { URL.revokeObjectURL(url); }
 };
+async function saveAvatar(remove){
+  const controls = ["editAvatar","avatarPick","removeAvatar","cropEditor"];
+  controls.forEach(id => $(id).disabled = true);
+  try {
+    await F.setDoc(F.doc(fs,"prefs",myId),{avatar:remove ? F.deleteField() : $("cropView").toDataURL("image/jpeg",0.86)},{merge:true});
+    closeCrop(); $("editAvatar").focus();
+    showAccountMessage("profileMsg", remove ? "Фото удалено." : "Фото сохранено.");
+  } catch(e){ showAccountMessage("profileMsg","Не удалось сохранить изменения. Попробуйте ещё раз."); }
+  finally { controls.forEach(id => $(id).disabled = false); }
+}
+$("cropSave").onclick = () => { if (cropImage) saveAvatar(false); };
+$("removeAvatar").onclick = () => { if (confirm("Удалить фото профиля?")) saveAvatar(true); };
+function renderAvatar(avatar){
+  const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
+  for (const [photo,initial] of [["avatarImage","avatarInitial"],["menuPhoto","menuInitial"]]){
+    if (valid) $(photo).src = avatar; else $(photo).removeAttribute("src");
+    $(photo).classList.toggle("hidden",!valid);
+    $(initial).classList.toggle("hidden",valid);
+  }
+  $("removeAvatar").classList.toggle("hidden",!valid);
+}
 function renderAccountEmail(user){
   const legacy = isLegacyEmail(user.email);
   $("accountEmail").textContent = legacy ? "Почта для входа и восстановления пароля пока не привязана." : "Email для входа: " + user.email;
@@ -379,24 +432,16 @@ if (String(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey || "").length < 10) {
     myId = u.uid; ownerKnown = meKnown = false;
     emailCheckStarted = false;
     renderAccountEmail(u);
-    $("avatarImage").removeAttribute("src");
-    $("avatarImage").classList.add("hidden");
-    $("avatarInitial").classList.remove("hidden");
-    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => {
-      const avatar = snap.data()?.avatar;
-      const valid = typeof avatar === "string" && avatar.startsWith("data:image/jpeg;base64,");
-      if (valid) $("avatarImage").src = avatar;
-      $("avatarImage").classList.toggle("hidden", !valid);
-      $("avatarInitial").classList.toggle("hidden", valid);
-    }, () => {}));
+    closeCrop(); renderAvatar(null);
+    userSubs.push(F.onSnapshot(F.doc(fs, "prefs", u.uid), snap => renderAvatar(snap.data()?.avatar), () => {}));
     loadLookFromAccount();
     view("loadView");
     userSubs.push(F.onSnapshot(F.doc(fs, "config/owner"), d => { ownerUid = d.exists() ? d.data().uid : null; amOwner = ownerUid === myId; ownerKnown = true; gate(); },
       () => { ownerKnown = true; gate(); }));
     userSubs.push(F.onSnapshot(F.doc(fs, "users/" + myId), d => {
       me = d.exists() ? {id: d.id, ...d.data()} : null; meKnown = true;
-      $("profileName").textContent = me?.name || "";
-      $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
+      $("menuName").textContent = $("profileName").textContent = me?.name || "";
+      $("menuInitial").textContent = $("avatarInitial").textContent = (me?.name || "").trim().slice(0,1).toUpperCase();
       if (dataStarted && !amOwner && me && !me.approved) { location.reload(); return; }
       if (dataStarted && isManager() !== startedAsManager) { location.reload(); return; }   // выдали или забрали «Управление»
       gate();

@@ -114,7 +114,14 @@ rep('''    <div class="card" id="summaryFloors"></div>
         <input id="avatarFile" type="file" accept="image/*" class="hidden">
         <div class="grow"><h2 id="profileName"></h2><button class="link" id="editName">Изменить имя</button></div>
       </div>
-      <button class="link" id="editAvatar">Изменить фото</button>
+      <div class="row"><button class="link" id="editAvatar">Изменить фото</button><button class="link hidden" id="removeAvatar">Удалить фото</button></div>
+      <fieldset class="hidden crop-editor" id="cropEditor"><legend>Кадрирование фото</legend>
+        <canvas id="cropView" width="256" height="256" aria-label="Предпросмотр аватара"></canvas>
+        <label>Масштаб<input id="cropZoom" type="range" min="1" max="3" step=".01" value="1"></label>
+        <label>По горизонтали<input id="cropX" type="range" min="-1" max="1" step=".01" value="0"></label>
+        <label>По вертикали<input id="cropY" type="range" min="-1" max="1" step=".01" value="0"></label>
+        <div class="row"><button id="cropSave">Сохранить фото</button><button class="sec" id="cropCancel">Отмена</button></div>
+      </fieldset>
       <form id="nameForm" class="account-form hidden">
         <label for="newName">Имя</label><input id="newName" maxlength="60" required>
         <div class="row"><button>Сохранить</button><button type="button" class="sec" id="cancelName">Отмена</button></div>
@@ -200,9 +207,12 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">','''<m
 <script>
 '''+open(os.path.join(SRC,'look_head.js'),encoding='utf-8').read()+'''</script>''')
 rep('''  <button class="navitem" id="logoutBtn">Выйти</button>''','''  <button class="navitem" data-tab="settings">Настройки</button>
-  <button class="navitem" data-tab="account">Аккаунт</button>
   <div class="empty hidden" id="iosHint" style="padding:4px 12px 8px">Чтобы установить на iPhone: в Safari нажмите «Поделиться» → «На экран „Домой“».</div>
-  <button class="navitem" id="logoutBtn">Выйти</button>''')
+  <button class="navitem" id="logoutBtn">Выйти</button>
+  <button class="navitem account-footer" data-tab="account">
+    <span class="menu-avatar"><span id="menuInitial"></span><img id="menuPhoto" class="hidden" alt=""></span>
+    <span class="account-caption"><b id="menuName"></b><span>Аккаунт</span></span>
+  </button>''')
 # ---------- SCRIPT ----------
 rep('const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все вкладки"};','const ROLE = {measure: "Замер", cut: "Нарезка", glue: "Оклейка", admin: "Все работы", manager: "Управление"};')
 rep('<script>\nconst $ = id => document.getElementById(id);','''<script type="module">

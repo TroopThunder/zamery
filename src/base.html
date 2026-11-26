@@ -99,6 +99,16 @@ button:disabled{opacity:.45;cursor:default}
 @media (prefers-reduced-motion:no-preference){#drawer{transition:transform .2s ease}}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 4px 12px}
 .account-open #objCard,.account-open #meRow{display:none}
+#drawer .account-footer{margin-top:auto;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.menu-avatar{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;overflow:hidden;background:var(--accent-soft);color:var(--accent)}
+.menu-avatar img{width:100%;height:100%;object-fit:cover}
+.account-caption{min-width:0;display:grid;text-align:left}
+.account-caption b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-caption span{font-size:13px;color:var(--muted)}
+.crop-editor{margin:0;padding:12px;min-width:0;border:1px solid var(--line);border-radius:12px;display:grid;gap:8px}
+.crop-editor label{display:grid;gap:4px}
+.crop-editor input{width:100%;accent-color:var(--accent)}
+#cropView{width:min(100%,192px);height:auto;border-radius:50%;justify-self:center;touch-action:none;cursor:grab}
 .profile-avatar{width:72px;height:72px;border-radius:50%;padding:0;overflow:hidden;background:var(--accent-soft);color:var(--accent);font-size:28px}
 .profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 #profileName{overflow-wrap:anywhere}
