@@ -369,10 +369,8 @@ function renderAdmin(){
         el("div", {}, el("label", {htmlFor: rc.id, textContent: "Своя ставка: нарезка"}), rc),
         el("div", {}, el("label", {htmlFor: rg.id, textContent: "Своя ставка: оклейка"}), rg)),
       effLine,
-      el("div", {className: "empty", textContent: "Оставьте поле пустым — будет стандартная цена. Заполняйте, только если этому человеку нужна другая ставка."}),
       el("div", {className: "row"}, rs, back, el("span", {className: "grow"}), ...(isOwn ? [] : [del]))));
   }
-  uc.append(el("div", {className: "empty", textContent: "Забыл пароль: удалите сотрудника здесь и в консоли Firebase (Authentication → Users → его строка → Delete account). После этого он сможет зарегистрироваться заново с тем же именем."}));
   box.append(uc);
 
   // смены
