@@ -1372,15 +1372,16 @@ document.addEventListener("touchstart", e => {
   if (e.touches.length !== 1) { drawerSwipe = null; return; }
   const touch = e.touches[0], drawer = $("drawer"), isOpen = drawer.classList.contains("open");
   const target = e.target instanceof Element ? e.target : e.target.parentElement;
-  const startsAtEdge = !isOpen && touch.clientX <= Math.min(88, window.innerWidth * .28);
-  const startsInDrawer = isOpen && drawer.contains(target) && !target.closest("input,textarea,select,[contenteditable='true'],[role='slider']");
+  const excludedSwipeTarget = target.closest("input,textarea,select,[contenteditable='true'],[role='slider']");
+  const startsAnywhere = !isOpen && !excludedSwipeTarget;
+  const startsInDrawer = isOpen && drawer.contains(target) && !excludedSwipeTarget;
   const startsOnRight = isOpen && touch.clientX >= drawer.getBoundingClientRect().right;
-  drawerSwipe = startsAtEdge || startsInDrawer || startsOnRight ? {x: touch.clientX, y: touch.clientY, startsAtEdge, startsInDrawer, startsOnRight} : null;
+  drawerSwipe = startsAnywhere || startsInDrawer || startsOnRight ? {x: touch.clientX, y: touch.clientY, startsAnywhere, startsInDrawer, startsOnRight} : null;
 }, {passive: true});
 document.addEventListener("touchmove", e => {
   if (!drawerSwipe || e.touches.length !== 1) return;
   const touch = e.touches[0], dx = touch.clientX - drawerSwipe.x, dy = touch.clientY - drawerSwipe.y;
-  const towardMenu = drawerSwipe.startsAtEdge && dx > 8 || (drawerSwipe.startsInDrawer || drawerSwipe.startsOnRight) && dx < -8;
+  const towardMenu = drawerSwipe.startsAnywhere && dx > 8 || (drawerSwipe.startsInDrawer || drawerSwipe.startsOnRight) && dx < -8;
   if (towardMenu && Math.abs(dx) > Math.abs(dy) * 1.2) e.preventDefault();
 }, {passive: false});
 document.addEventListener("touchend", e => {
@@ -1388,7 +1389,7 @@ document.addEventListener("touchend", e => {
   if (!swipe || !e.changedTouches.length) return;
   const touch = e.changedTouches[0], dx = touch.clientX - swipe.x, dy = touch.clientY - swipe.y;
   if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-  if (swipe.startsAtEdge && dx > 0) openMenu();
+  if (swipe.startsAnywhere && dx > 0) openMenu();
   else if ((swipe.startsInDrawer || swipe.startsOnRight) && dx < 0) closeMenu();
 }, {passive: true});
 document.addEventListener("touchcancel", () => { drawerSwipe = null; }, {passive: true});
