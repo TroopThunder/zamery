@@ -281,7 +281,9 @@ function docApi(ref){
     changeItems: changes => F.runTransaction(fs, async tx => {
       const d = await tx.get(ref);
       if (!d.exists()) throw {code: "room-missing"};
-      tx.update(ref, roomItemsPatch(d.data(), changes));
+      const patch = roomItemsPatch(d.data(), changes);
+      tx.update(ref, patch);
+      return patch.items;
     }),
     onSnapshot: (n, e) => F.onSnapshot(ref, {includeMetadataChanges: true}, d => n(wrapDoc(d)), e),
     collection: p => colApi(F.collection(ref, p)),

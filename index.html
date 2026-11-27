@@ -199,6 +199,8 @@ button:disabled{opacity:.45;cursor:default}
 .qty{display:flex;align-items:center;gap:6px;margin-left:auto}
 .qty button{width:38px;height:38px;padding:0;font-size:20px;background:var(--bg);color:var(--ink);border-color:var(--line)}
 .qty span{min-width:28px;text-align:center;font:600 16px var(--mono)}
+.qty .qty-value{width:auto;min-width:38px;padding:8px 6px;font:600 16px var(--mono)}
+.qty input{width:68px;max-width:22vw;text-align:center;font:600 16px var(--mono);padding:8px 4px}
 .empty{color:var(--muted);font-size:14px}
 .notice{padding:10px 12px;border-radius:10px;background:var(--accent-soft);font-size:14px}
 .match{border:2px solid var(--accent)}
@@ -535,7 +537,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 27.11.2026 23:49</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 28.11.2026 00:11</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -740,7 +742,9 @@ function docApi(ref){
     changeItems: changes => F.runTransaction(fs, async tx => {
       const d = await tx.get(ref);
       if (!d.exists()) throw {code: "room-missing"};
-      tx.update(ref, roomItemsPatch(d.data(), changes));
+      const patch = roomItemsPatch(d.data(), changes);
+      tx.update(ref, patch);
+      return patch.items;
     }),
     onSnapshot: (n, e) => F.onSnapshot(ref, {includeMetadataChanges: true}, d => n(wrapDoc(d)), e),
     collection: p => colApi(F.collection(ref, p)),
@@ -824,7 +828,7 @@ function settleOptimisticRoomChange(id, success, saved = null){
   else {
     if (saved && Number.isFinite(saved.num)) {
       change.n = saved.num;
-      change.target = Math.max(0, (Number(saved.baseCount) || 0) + change.delta);
+      change.target = Math.max(0, Number.isFinite(saved.target) ? saved.target : (Number(saved.baseCount) || 0) + change.delta);
     }
     change.committed = true;
     const base = change.oid === curObj && baseRooms.find(r => r.id === change.rid);
@@ -836,7 +840,7 @@ function settleOptimisticRoomChange(id, success, saved = null){
 
 function openObject(id){
   unsubs.forEach(u => u()); unsubs = [];
-  curObj = id; types = {}; rooms = []; baseRooms = []; pendingRoomChanges.clear(); log = []; curFloor = null; curRoomId = null; typesLoaded = roomsLoaded = false;
+  curObj = id; types = {}; rooms = []; baseRooms = []; pendingRoomChanges.clear(); log = []; curFloor = null; curRoomId = null; editingQuantity = null; quantityDraft = ""; typesLoaded = roomsLoaded = false;
   roomChooserOpen = false;
   hideMatch();
   $("renameBox").classList.add("hidden");
@@ -1246,13 +1250,44 @@ async function createType(w, h, oid, roomAtStart){
 async function addToRoom(n, q = 1){
   const r = room(); if (!r) { toast("Сначала выберите кабинет"); return; }
   try {
-    await db.doc(roomPath(r.id)).changeItems({[n]: q});
-    return true;
+    return await db.doc(roomPath(r.id)).changeItems({[n]: q});
   } catch(e) { toast(errMsg(e)); }
+}
+function beginQuantityEdit(n){
+  if (sizeSaving || !allowed("measure")) return;
+  editingQuantity = Number(n);
+  quantityDraft = String(room()?.items[n] || 0);
+  render();
+  const input = $("quantityInput");
+  if (input) { input.focus({preventScroll: true}); input.select(); }
+}
+async function saveRoomQuantity(n, raw){
+  if (editingQuantity !== Number(n)) return;
+  const r = room(), oid = curObj, rid = r?.id;
+  const current = Number(r?.items[n]) || 0;
+  editingQuantity = null; quantityDraft = "";
+  const valueText = String(raw ?? "").trim();
+  const value = Number(valueText);
+  if (!r) { render(); return; }
+  if (!/^\d+$/.test(valueText) || !Number.isSafeInteger(value)) {
+    toast("Введите целое количество не меньше 0"); render(); return;
+  }
+  const delta = value - current;
+  if (!delta) { render(); return; }
+  sizeSaving = true;
+  const optimisticId = beginOptimisticRoomChange(oid, rid, n, delta);
+  try {
+    const savedItems = await db.doc(roomPath(rid)).changeItems({[n]: delta});
+    if (optimisticId) settleOptimisticRoomChange(optimisticId, true, {num: Number(n), target: Number(savedItems?.[n]) || 0});
+  } catch(e) {
+    if (optimisticId) settleOptimisticRoomChange(optimisticId, false);
+    toast(errMsg(e));
+  } finally { sizeSaving = false; render(); }
 }
 
 /* ---------- ввод размера ---------- */
-let sizeSaving = false;
+let sizeSaving = false, isRendering = false;
+let editingQuantity = null, quantityDraft = "";
 const recentWindowCodes = new Map();
 function rememberWindowCode(oid, label){
   const recent = recentWindowCodes.get(oid) || [];
@@ -1333,13 +1368,13 @@ async function addKnownSize(n, {clearDraft = true, showAdded = true} = {}){
   const pendingShown = showAdded && showPendingWindowAdded(oid, rid, t?.w, t?.h, label);
   render();
   try {
-    if (await addToRoom(n)) {
-      if (optimisticId) settleOptimisticRoomChange(optimisticId, true);
+    const savedItems = await addToRoom(n);
+    if (savedItems) {
+      if (optimisticId) settleOptimisticRoomChange(optimisticId, true, {num: Number(n), target: Number(savedItems[n]) || 0});
       if (clearDraft && curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
       if (pendingShown) finishPendingWindowAdded(oid, rid, label, t?.w, t?.h);
       else if (showAdded) showWindowAdded(oid, rid, label, t?.w, t?.h);
-    }
-    else {
+    } else {
       if (optimisticId) settleOptimisticRoomChange(optimisticId, false);
       if (pendingShown && $("windowAdded").open) $("windowAdded").close();
     }
@@ -1402,8 +1437,11 @@ function el(tag, props = {}, ...kids){ const e = document.createElement(tag); Ob
 function render(){
   const a = document.activeElement;
   const keep = a && a.id && (a.tagName === "INPUT" || a.tagName === "SELECT") ? {id: a.id, v: a.value, s: a.selectionStart, e: a.selectionEnd} : null;
-  renderAll();
-  if (typeof afterRender === "function") afterRender();
+  isRendering = true;
+  try {
+    renderAll();
+    if (typeof afterRender === "function") afterRender();
+  } finally { isRendering = false; }
   if (keep) {
     const n = document.getElementById(keep.id);
     if (n && n !== a) { n.value = keep.v; n.focus(); try { if (keep.s != null) n.setSelectionRange(keep.s, keep.e); } catch(e) {} }
@@ -1453,6 +1491,7 @@ function renderAll(){
 
   // текущий кабинет
   const r = room();
+  if (editingQuantity !== null && !(Number(r?.items[editingQuantity]) > 0)) { editingQuantity = null; quantityDraft = ""; }
   renderMeasureLocation();
   $("roomTitle").textContent = r ? `Кабинет ${r.name}` : "Кабинет";
   $("roomCard").classList.toggle("hidden", !r || !allowed("measure"));
@@ -1464,12 +1503,26 @@ function renderAll(){
     if (!nums.length) ri.append(el("div", {className: "empty", textContent: "В кабинете пока нет окон. Введите размер или нажмите на окно из списка ниже."}));
     for (const n of nums) {
       const t = types[n];
-      const minus = el("button", {textContent: "−", ariaLabel: "Убрать одно"}); minus.onclick = () => addToRoom(n, -1); minus.disabled = !allowed("measure");
+      const minus = el("button", {textContent: "−", ariaLabel: "Убрать одно"}); minus.onclick = () => addToRoom(n, -1); minus.disabled = sizeSaving || !allowed("measure");
       const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addKnownSize(n, {clearDraft: false, showAdded: false}); plus.disabled = sizeSaving || !allowed("measure");
+      let quantity;
+      if (editingQuantity === Number(n)) {
+        quantity = el("input", {id: "quantityInput", type: "text", inputMode: "numeric", pattern: "[0-9]*", value: quantityDraft, ariaLabel: `Количество окон ${code(n)}`});
+        quantity.oninput = () => { quantityDraft = quantity.value; };
+        quantity.onkeydown = e => {
+          if (e.key === "Enter") { e.preventDefault(); quantity.blur(); }
+          else if (e.key === "Escape") { editingQuantity = null; quantityDraft = ""; render(); }
+        };
+        quantity.onblur = () => { if (!isRendering) saveRoomQuantity(n, quantity.value); };
+      } else {
+        quantity = el("button", {type: "button", className: "qty-value", textContent: r.items[n], ariaLabel: `Количество ${r.items[n]}, изменить`});
+        quantity.onclick = () => beginQuantityEdit(n);
+        quantity.disabled = sizeSaving || !allowed("measure");
+      }
       ri.append(el("div", {className: "item"},
         el("span", {className: "code", textContent: code(n)}),
         el("span", {className: "size", textContent: t ? `${cm(t.w)}×${cm(t.h)}` : "…"}),
-        el("div", {className: "qty"}, minus, el("span", {textContent: r.items[n]}), plus)));
+        el("div", {className: "qty"}, minus, quantity, plus)));
     }
   }
   for (const id of ["inW", "inH", "addSize"]) $(id).disabled = sizeSaving || !r || !allowed("measure");
