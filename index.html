@@ -537,7 +537,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 28.11.2026 00:11</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 28.11.2026 00:16</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -2517,6 +2517,30 @@ function closeMenu(){
   drawer.setAttribute("inert", "");
   $("backdrop").classList.add("hidden");
 }
+let drawerSwipe = null;
+document.addEventListener("touchstart", e => {
+  if (e.touches.length !== 1) { drawerSwipe = null; return; }
+  const touch = e.touches[0], drawer = $("drawer"), isOpen = drawer.classList.contains("open");
+  const target = e.target instanceof Element ? e.target : e.target.parentElement;
+  const startsAtEdge = !isOpen && touch.clientX <= 26;
+  const startsInDrawer = isOpen && drawer.contains(target) && !target.closest("input,textarea,select,[contenteditable='true'],[role='slider']");
+  drawerSwipe = startsAtEdge || startsInDrawer ? {x: touch.clientX, y: touch.clientY, startsAtEdge, startsInDrawer} : null;
+}, {passive: true});
+document.addEventListener("touchmove", e => {
+  if (!drawerSwipe || e.touches.length !== 1) return;
+  const touch = e.touches[0], dx = touch.clientX - drawerSwipe.x, dy = touch.clientY - drawerSwipe.y;
+  const towardMenu = drawerSwipe.startsAtEdge && dx > 8 || drawerSwipe.startsInDrawer && dx < -8;
+  if (towardMenu && Math.abs(dx) > Math.abs(dy) * 1.2) e.preventDefault();
+}, {passive: false});
+document.addEventListener("touchend", e => {
+  const swipe = drawerSwipe; drawerSwipe = null;
+  if (!swipe || !e.changedTouches.length) return;
+  const touch = e.changedTouches[0], dx = touch.clientX - swipe.x, dy = touch.clientY - swipe.y;
+  if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+  if (swipe.startsAtEdge && dx > 0) openMenu();
+  else if (swipe.startsInDrawer && dx < 0) closeMenu();
+}, {passive: true});
+document.addEventListener("touchcancel", () => { drawerSwipe = null; }, {passive: true});
 $("drawer").addEventListener("keydown", e => {
   if (e.key !== "Tab") return;
   const buttons = Array.from($("drawer").querySelectorAll("button:not(:disabled)")).filter(b => b.getClientRects().length);
