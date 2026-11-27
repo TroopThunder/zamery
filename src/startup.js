@@ -572,6 +572,9 @@ function startData(){
   const timer = setTimeout(() => status("База пока не отвечает — проверьте интернет. Внесённые данные сохранятся, когда связь появится."), 10000);
   gsubs.push(F.onSnapshot(F.collection(fs, "objects"), {includeMetadataChanges: true}, q => {
     objects = q.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => (b.created || 0) - (a.created || 0));
+    // Смена может загрузиться раньше объектов; пересчитать её объём после каждого обновления списка объектов.
+    if (!q.metadata.fromCache) objectsLoaded = true;
+    if (myShift && objectsLoaded) scheduleShiftWork(0);
     if (!q.metadata.fromCache) { clearTimeout(timer); status(objects.length ? "" : (allowed("measure") ? "Создайте первый объект кнопкой «Новый»." : "Объектов пока нет.")); }
     if (!curObj || !objects.find(o => o.id === curObj)) {
       let saved = null; try { saved = localStorage.getItem("zamery-obj"); } catch(e) {}

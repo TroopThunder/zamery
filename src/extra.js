@@ -36,9 +36,9 @@ function shiftBanner(){
   const w = shiftWorkOf(myShift), pay = shiftPay(myShift);
   return el("div", {className: "notice"}, el("div", {className: "pnums"},
     el("span", {}, "Ваша смена ", el("b", {textContent: dur(Date.now() - myShift.start)})),
-    el("span", {}, "нарезка ", el("b", {textContent: `${m2(w.cut)} м²`})),
-    el("span", {}, "оклейка ", el("b", {textContent: `${m2(w.glue)} м²`})),
-    el("span", {className: "done"}, "заработано ", el("b", {textContent: `${money(pay)} ₽`}))));
+    el("span", {}, "нарезка ", el("b", {textContent: w.loading ? "Считаем…" : `${m2(w.cut)} м²`})),
+    el("span", {}, "оклейка ", el("b", {textContent: w.loading ? "Считаем…" : `${m2(w.glue)} м²`})),
+    el("span", {className: "done"}, "заработано ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay)} ₽`}))));
 }
 $("shiftWarnGo").onclick = () => showTab("shift");
 

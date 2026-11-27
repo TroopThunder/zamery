@@ -537,7 +537,7 @@ html.glass .topbar .iconbtn{-webkit-backdrop-filter:none;backdrop-filter:none;bo
       <div class="chips" id="glassChips"></div>
       <div class="empty" id="lookNote">Выбор сохраняется сам и остаётся при следующем открытии.</div>
     </div>
-    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 28.11.2026 00:26</div>
+    <div class="empty" id="appVersion" style="text-align:center;font-size:12px;padding:4px 0">Версия от 28.11.2026 01:05</div>
     </section>
   <section id="tab-account" class="hidden" style="flex-direction:column;gap:12px">
     <div class="card">
@@ -693,7 +693,7 @@ const byNum = (a, b) => { const x = parseFloat(a), y = parseFloat(b); return (is
 const TAB_ID = "tab-" + Math.random().toString(36).slice(2);
 
 let db = null, canWrite = true;
-let objects = [], curObj = null;
+let objects = [], objectsLoaded = false, curObj = null;
 let types = {};          // num -> {num, w, h}
 let rooms = [];          // {id, floor, name, items:{num:count}}
 let baseRooms = [];
@@ -898,8 +898,13 @@ function canGlueIn(r, k){
 async function mark(kind, n, q, opt = {}){
   if (!allowed(kind)) return;
   if (!q) return;
+  if (q < 0 && !canResetAll()) {
+    const own = doneBy(kind, opt.room || "", myId)[n] || 0;
+    if (-q > own) { toast("Можно отменить только свои отметки"); return; }
+  }
+  const shift = myShift;
+  if (!shift || shift.end) { toast("Сначала откройте смену во вкладке «Моя смена» — без неё отметка не сохранится."); return; }
   if (closingShift) { toast("Дождитесь закрытия смены"); return; }
-  if (!myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
   if (kind === "glue" && q > 0) {
     const r = opt.room ? rooms.find(x => x.id === opt.room) : null;
     const avail = r ? canGlueIn(r, n) : glueAvailTotal(n);
@@ -910,22 +915,18 @@ async function mark(kind, n, q, opt = {}){
       return;
     }
   }
-  if (q < 0 && !canResetAll()) {
-    const own = doneBy(kind, opt.room || "", myId)[n] || 0;
-    if (-q > own) { toast("Можно отменить только свои отметки"); return; }
-  }
   const ref = db.collection(objPath() + "/log").doc();
-  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now(), shift: myShift.id};
+  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now(), shift: shift.id};
   if (opt.reset) entry.reset = true;
   if (opt.room) entry.room = opt.room;
-  log.push({id: ref.id, ...entry}); render();
-  pendingMarks++;
+  log.push({id: ref.id, ...entry}); pendingMarks++; render();
+  if (!opt.silent) toast("Сохраняю отметку…");
   try {
     await ref.set(entry); scheduleShiftWork(); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`);
     return true;
   }
   catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
-  finally { pendingMarks--; }
+  finally { pendingMarks = Math.max(0, pendingMarks - 1); render(); }
 }
 // Сброс окна по всему объекту: обнуляет и отметки без кабинета, и по каждому кабинету
 function resetEverywhere(kind, n){
@@ -1591,9 +1592,11 @@ function myPrices(){
 // даже если объект потом удалят); открытая — по текущим отметкам
 function shiftWorkOf(s){
   if (s.end) return {cut: s.cutArea || 0, glue: s.glueArea || 0};
-  return shiftWork[s.id] || {cut: s.cutArea || 0, glue: s.glueArea || 0};
+  return Object.prototype.hasOwnProperty.call(shiftWork, s.id)
+    ? shiftWork[s.id]
+    : {cut: 0, glue: 0, loading: true};
 }
-function shiftPay(s){ const w = shiftWorkOf(s); return w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
+function shiftPay(s){ const w = shiftWorkOf(s); return w.loading ? null : w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
 
 /* Объём работы смены считается по отметкам во всех объектах */
 const typesCache = {};
@@ -1625,7 +1628,6 @@ async function loadShiftWork(s, fresh = false){
   res.cut = Math.max(0, res.cut); res.glue = Math.max(0, res.glue);
   res.cutCount = Math.max(0, res.cutCount);
   res.glueCount = Math.max(0, res.glueCount);
-  shiftWork[s.id] = res;
   return res;
 }
 async function readConfirmedDocs(ref){
@@ -1633,11 +1635,22 @@ async function readConfirmedDocs(ref){
   if (snap.metadata.hasPendingWrites) throw {code: "pending-writes"};
   return snap;
 }
-let swTimer = null;
+let swTimer = null, swGeneration = 0;
 function scheduleShiftWork(delay = 1500){
-  if (!myShift) return;
+  const s = myShift;
+  if (!s || !objectsLoaded) return;
+  const generation = ++swGeneration;
   clearTimeout(swTimer);
-  swTimer = setTimeout(async () => { try { await loadShiftWork(myShift); render(); } catch(e) {} }, delay);
+  swTimer = setTimeout(async () => {
+    try {
+      const work = await loadShiftWork(s);
+      if (generation !== swGeneration || myShift?.id !== s.id) return;
+      shiftWork[s.id] = work;
+      render();
+    } catch(e) {
+      if (generation === swGeneration && myShift?.id === s.id) toast("Не удалось обновить итог смены. Откройте «Моя смена» и нажмите «Обновить».");
+    }
+  }, delay);
 }
 // Для владельца: все отметки всех объектов, сгруппированные по сменам
 let allWorkBusy = false;
@@ -1714,16 +1727,16 @@ function shiftStats(s){
   const work = el("div", {className: "shift-work"});
   for (const [kind, label, price] of [["cut", "Нарезка", s.priceCut], ["glue", "Оклейка", s.priceGlue]]) {
     const count = countFor(s, kind);
-    const volume = (count == null ? "" : pieces(count) + " · ") + m2(w[kind]) + " м²";
+    const volume = w.loading ? "Считаем…" : (count == null ? "" : pieces(count) + " · ") + m2(w[kind]) + " м²";
     work.append(el("div", {className: "shift-work-line"},
       el("span", {textContent: label}), el("div", {}, el("b", {textContent: volume}), " × " + money(price) + " ₽/м²")));
   }
   return el("div", {className: "srow", style: "border:0;padding:0"}, work,
     el("div", {className: "pnums"},
-      el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
+      el("span", {}, "За работу ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay)} ₽`})),
       bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
       bonus < 0 ? el("span", {className: "left"}, "Штраф ", el("b", {textContent: `−${money(-bonus)} ₽`})) : "",
-      el("span", {className: "done"}, "Итого ", el("b", {textContent: `${money(pay + bonus)} ₽`}))),
+      el("span", {className: "done"}, "Итого ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay + bonus)} ₽`}))),
     s.bonusNote ? el("div", {className: "empty", textContent: (bonus < 0 ? "Причина штрафа: " : "Комментарий к бонусу: ") + s.bonusNote}) : "");
 }
 
@@ -2119,9 +2132,9 @@ function shiftBanner(){
   const w = shiftWorkOf(myShift), pay = shiftPay(myShift);
   return el("div", {className: "notice"}, el("div", {className: "pnums"},
     el("span", {}, "Ваша смена ", el("b", {textContent: dur(Date.now() - myShift.start)})),
-    el("span", {}, "нарезка ", el("b", {textContent: `${m2(w.cut)} м²`})),
-    el("span", {}, "оклейка ", el("b", {textContent: `${m2(w.glue)} м²`})),
-    el("span", {className: "done"}, "заработано ", el("b", {textContent: `${money(pay)} ₽`}))));
+    el("span", {}, "нарезка ", el("b", {textContent: w.loading ? "Считаем…" : `${m2(w.cut)} м²`})),
+    el("span", {}, "оклейка ", el("b", {textContent: w.loading ? "Считаем…" : `${m2(w.glue)} м²`})),
+    el("span", {className: "done"}, "заработано ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay)} ₽`}))));
 }
 $("shiftWarnGo").onclick = () => showTab("shift");
 
@@ -3198,6 +3211,9 @@ function startData(){
   const timer = setTimeout(() => status("База пока не отвечает — проверьте интернет. Внесённые данные сохранятся, когда связь появится."), 10000);
   gsubs.push(F.onSnapshot(F.collection(fs, "objects"), {includeMetadataChanges: true}, q => {
     objects = q.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => (b.created || 0) - (a.created || 0));
+    // Смена может загрузиться раньше объектов; пересчитать её объём после каждого обновления списка объектов.
+    if (!q.metadata.fromCache) objectsLoaded = true;
+    if (myShift && objectsLoaded) scheduleShiftWork(0);
     if (!q.metadata.fromCache) { clearTimeout(timer); status(objects.length ? "" : (allowed("measure") ? "Создайте первый объект кнопкой «Новый»." : "Объектов пока нет.")); }
     if (!curObj || !objects.find(o => o.id === curObj)) {
       let saved = null; try { saved = localStorage.getItem("zamery-obj"); } catch(e) {}

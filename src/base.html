@@ -407,7 +407,7 @@ const byNum = (a, b) => { const x = parseFloat(a), y = parseFloat(b); return (is
 const TAB_ID = "tab-" + Math.random().toString(36).slice(2);
 
 let db = null, canWrite = true;
-let objects = [], curObj = null;
+let objects = [], objectsLoaded = false, curObj = null;
 let types = {};          // num -> {num, w, h}
 let rooms = [];          // {id, floor, name, items:{num:count}}
 let baseRooms = [];
@@ -575,6 +575,13 @@ function canGlueIn(r, k){
 async function mark(kind, n, q, opt = {}){
   if (!allowed(kind)) return;
   if (!q) return;
+  if (q < 0 && !canResetAll()) {
+    const own = doneBy(kind, opt.room || "", myId)[n] || 0;
+    if (-q > own) { toast("Можно отменить только свои отметки"); return; }
+  }
+  const shift = myShift;
+  if (!shift || shift.end) { toast("Сначала откройте смену во вкладке «Моя смена» — без неё отметка не сохранится."); return; }
+  if (closingShift) { toast("Дождитесь закрытия смены"); return; }
   if (kind === "glue" && q > 0) {
     const r = opt.room ? rooms.find(x => x.id === opt.room) : null;
     const avail = r ? canGlueIn(r, n) : glueAvailTotal(n);
@@ -586,15 +593,17 @@ async function mark(kind, n, q, opt = {}){
     }
   }
   const ref = db.collection(objPath() + "/log").doc();
-  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};
+  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now(), shift: shift.id};
   if (opt.reset) entry.reset = true;
   if (opt.room) entry.room = opt.room;
-  log.push({id: ref.id, ...entry}); render();
+  log.push({id: ref.id, ...entry}); pendingMarks++; render();
+  if (!opt.silent) toast("Сохраняю отметку…");
   try {
-    await ref.set(entry); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`);
+    await ref.set(entry); scheduleShiftWork(); if (!opt.silent) toast(opt.reset ? `${code(n)}: сброшено до 0` : `${KIND[kind].verb}: ${code(n)} +${q} шт`);
     return true;
   }
   catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
+  finally { pendingMarks = Math.max(0, pendingMarks - 1); render(); }
 }
 // Сброс окна по всему объекту: обнуляет и отметки без кабинета, и по каждому кабинету
 function resetEverywhere(kind, n){

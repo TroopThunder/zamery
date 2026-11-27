@@ -29,9 +29,11 @@ function myPrices(){
 // даже если объект потом удалят); открытая — по текущим отметкам
 function shiftWorkOf(s){
   if (s.end) return {cut: s.cutArea || 0, glue: s.glueArea || 0};
-  return shiftWork[s.id] || {cut: s.cutArea || 0, glue: s.glueArea || 0};
+  return Object.prototype.hasOwnProperty.call(shiftWork, s.id)
+    ? shiftWork[s.id]
+    : {cut: 0, glue: 0, loading: true};
 }
-function shiftPay(s){ const w = shiftWorkOf(s); return w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
+function shiftPay(s){ const w = shiftWorkOf(s); return w.loading ? null : w.cut * (s.priceCut || 0) + w.glue * (s.priceGlue || 0); }
 
 /* Объём работы смены считается по отметкам во всех объектах */
 const typesCache = {};
@@ -63,7 +65,6 @@ async function loadShiftWork(s, fresh = false){
   res.cut = Math.max(0, res.cut); res.glue = Math.max(0, res.glue);
   res.cutCount = Math.max(0, res.cutCount);
   res.glueCount = Math.max(0, res.glueCount);
-  shiftWork[s.id] = res;
   return res;
 }
 async function readConfirmedDocs(ref){
@@ -71,11 +72,22 @@ async function readConfirmedDocs(ref){
   if (snap.metadata.hasPendingWrites) throw {code: "pending-writes"};
   return snap;
 }
-let swTimer = null;
+let swTimer = null, swGeneration = 0;
 function scheduleShiftWork(delay = 1500){
-  if (!myShift) return;
+  const s = myShift;
+  if (!s || !objectsLoaded) return;
+  const generation = ++swGeneration;
   clearTimeout(swTimer);
-  swTimer = setTimeout(async () => { try { await loadShiftWork(myShift); render(); } catch(e) {} }, delay);
+  swTimer = setTimeout(async () => {
+    try {
+      const work = await loadShiftWork(s);
+      if (generation !== swGeneration || myShift?.id !== s.id) return;
+      shiftWork[s.id] = work;
+      render();
+    } catch(e) {
+      if (generation === swGeneration && myShift?.id === s.id) toast("Не удалось обновить итог смены. Откройте «Моя смена» и нажмите «Обновить».");
+    }
+  }, delay);
 }
 // Для владельца: все отметки всех объектов, сгруппированные по сменам
 let allWorkBusy = false;
@@ -152,16 +164,16 @@ function shiftStats(s){
   const work = el("div", {className: "shift-work"});
   for (const [kind, label, price] of [["cut", "Нарезка", s.priceCut], ["glue", "Оклейка", s.priceGlue]]) {
     const count = countFor(s, kind);
-    const volume = (count == null ? "" : pieces(count) + " · ") + m2(w[kind]) + " м²";
+    const volume = w.loading ? "Считаем…" : (count == null ? "" : pieces(count) + " · ") + m2(w[kind]) + " м²";
     work.append(el("div", {className: "shift-work-line"},
       el("span", {textContent: label}), el("div", {}, el("b", {textContent: volume}), " × " + money(price) + " ₽/м²")));
   }
   return el("div", {className: "srow", style: "border:0;padding:0"}, work,
     el("div", {className: "pnums"},
-      el("span", {}, "За работу ", el("b", {textContent: `${money(pay)} ₽`})),
+      el("span", {}, "За работу ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay)} ₽`})),
       bonus > 0 ? el("span", {}, "Бонус ", el("b", {textContent: `+${money(bonus)} ₽`})) : "",
       bonus < 0 ? el("span", {className: "left"}, "Штраф ", el("b", {textContent: `−${money(-bonus)} ₽`})) : "",
-      el("span", {className: "done"}, "Итого ", el("b", {textContent: `${money(pay + bonus)} ₽`}))),
+      el("span", {className: "done"}, "Итого ", el("b", {textContent: pay == null ? "Считаем…" : `${money(pay + bonus)} ₽`}))),
     s.bonusNote ? el("div", {className: "empty", textContent: (bonus < 0 ? "Причина штрафа: " : "Комментарий к бонусу: ") + s.bonusNote}) : "");
 }
 

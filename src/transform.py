@@ -299,25 +299,7 @@ function colApi(ref){
 }
 const makeDb = () => ({doc: p => docApi(F.doc(fs, p)), collection: p => colApi(F.collection(fs, p))});''')
 
-# mark: shift required + shift id
-rep('''  const ref = db.collection(objPath() + "/log").doc();
-  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now()};''','''  if (q < 0 && !canResetAll()) {
-    const own = doneBy(kind, opt.room || "", myId)[n] || 0;
-    if (-q > own) { toast("Можно отменить только свои отметки"); return; }
-  }
-  const ref = db.collection(objPath() + "/log").doc();
-  const entry = {kind, num: Number(n), q, by: myId || "", at: Date.now(), shift: myShift.id};''')
-rep('''  if (!q) return;
-  if (kind === "glue"''','''  if (!q) return;
-  if (closingShift) { toast("Дождитесь закрытия смены"); return; }
-  if (!myShift) { toast("Сначала откройте смену: меню ☰ → «Моя смена»"); return; }
-  if (kind === "glue"''')
-rep('''  try {
-    await ref.set(entry); if (!opt.silent)''','''  pendingMarks++;
-  try {
-    await ref.set(entry); scheduleShiftWork(); if (!opt.silent)''')
-rep('''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }''','''  catch(e) { log = log.filter(x => x.id !== ref.id); render(); toast(errMsg(e)); }
-  finally { pendingMarks--; }''')
+# Отметки и защита от закрытия смены во время записи реализованы в base.html.
 
 rep('''async function resolveNames(){
   if (!user || !user.profiles) return;
