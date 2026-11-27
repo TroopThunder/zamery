@@ -408,6 +408,8 @@ let db = null, canWrite = true;
 let objects = [], curObj = null;
 let types = {};          // num -> {num, w, h}
 let rooms = [];          // {id, floor, name, items:{num:count}}
+let baseRooms = [];
+const pendingRoomChanges = new Map();
 let curFloor = null, curRoomId = null;
 let roomChooserOpen = false;
 let unsubs = [];
@@ -472,10 +474,48 @@ function roomItemsPatch(data, changes){
   }
   return {items, updated: Date.now()};
 }
+function rebuildRooms(){
+  rooms = baseRooms.map(r => ({...r, items: {...r.items}}));
+  for (const change of pendingRoomChanges.values()) {
+    if (change.oid !== curObj) continue;
+    const target = rooms.find(r => r.id === change.rid);
+    if (!target) continue;
+    const actual = Number(target.items[change.n]) || 0;
+    const value = change.delta > 0 ? Math.max(actual, change.target) : Math.min(actual, change.target);
+    if (value > 0) target.items[change.n] = value;
+    else delete target.items[change.n];
+  }
+}
+function beginOptimisticRoomChange(oid, rid, n, delta){
+  const targetRoom = rooms.find(r => r.id === rid);
+  if (!targetRoom) return null;
+  const target = Math.max(0, (Number(targetRoom.items[n]) || 0) + delta);
+  const id = `${oid}:${rid}:${n}:${Date.now()}:${Math.random()}`;
+  pendingRoomChanges.set(id, {id, oid, rid, n: Number(n), delta, target, committed: false});
+  rebuildRooms();
+  render();
+  return id;
+}
+function settleOptimisticRoomChange(id, success, saved = null){
+  const change = pendingRoomChanges.get(id);
+  if (!change) return;
+  if (!success) pendingRoomChanges.delete(id);
+  else {
+    if (saved && Number.isFinite(saved.num)) {
+      change.n = saved.num;
+      change.target = Math.max(0, (Number(saved.baseCount) || 0) + change.delta);
+    }
+    change.committed = true;
+    const base = change.oid === curObj && baseRooms.find(r => r.id === change.rid);
+    const actual = Number(base?.items[change.n]) || 0;
+    if (change.delta > 0 ? actual >= change.target : actual <= change.target) pendingRoomChanges.delete(id);
+  }
+  if (change.oid === curObj) { rebuildRooms(); render(); }
+}
 
 function openObject(id){
   unsubs.forEach(u => u()); unsubs = [];
-  curObj = id; types = {}; rooms = []; log = []; curFloor = null; curRoomId = null; typesLoaded = roomsLoaded = false;
+  curObj = id; types = {}; rooms = []; baseRooms = []; pendingRoomChanges.clear(); log = []; curFloor = null; curRoomId = null; typesLoaded = roomsLoaded = false;
   roomChooserOpen = false;
   hideMatch();
   $("renameBox").classList.add("hidden");
@@ -491,10 +531,16 @@ function openObject(id){
     render();
   }, e => { clearTimeout(timer); status("Не удалось загрузить окна объекта."); }));
   unsubs.push(db.collection(objPath() + "/rooms").onSnapshot(s => {
-    rooms = s.docs.map(d => {
+    baseRooms = s.docs.map(d => {
       const v = d.data() || {};
       return {id: d.id, floor: String(v.floor ?? ""), name: String(v.name ?? ""), items: {...(v.items || {})}};
     });
+    for (const [id, change] of pendingRoomChanges) {
+      if (!change.committed || change.oid !== curObj) continue;
+      const actual = Number(baseRooms.find(r => r.id === change.rid)?.items[change.n]) || 0;
+      if (change.delta > 0 ? actual >= change.target : actual <= change.target) pendingRoomChanges.delete(id);
+    }
+    rebuildRooms();
     if (!s.metadata.fromCache) { roomsLoaded = true; done(); }
     if (curRoomId && !rooms.find(r => r.id === curRoomId)) curRoomId = null;
     render();
@@ -868,16 +914,42 @@ async function addToRoom(n, q = 1){
 /* ---------- ввод размера ---------- */
 let sizeSaving = false;
 const recentWindowCodes = new Map();
-function showWindowAdded(oid, rid, label, w, h){
+function rememberWindowCode(oid, label){
   const recent = recentWindowCodes.get(oid) || [];
   recentWindowCodes.set(oid, [label, ...recent.filter(code => code !== label)].slice(0, 4));
-  if (curObj !== oid || curRoomId !== rid || $("tab-measure").classList.contains("hidden") || $("drawer").classList.contains("open")) {
+}
+function canShowWindowAdded(oid, rid){
+  return curObj === oid && curRoomId === rid && !$("tab-measure").classList.contains("hidden") && !$("drawer").classList.contains("open");
+}
+function showWindowAdded(oid, rid, label, w, h){
+  rememberWindowCode(oid, label);
+  if (!canShowWindowAdded(oid, rid)) {
     toast(`Добавлено: ${label}`);
-    return;
+    return false;
   }
+  $("windowAddedTitle").textContent = "Окно добавлено";
   $("windowAddedCode").textContent = label;
   $("windowAddedSize").textContent = w > 0 && h > 0 ? `${cm(w)} × ${cm(h)} см` : "";
   $("windowAdded").showModal();
+  return true;
+}
+function showPendingWindowAdded(oid, rid, w, h, label = "Сохраняю…"){
+  if (!canShowWindowAdded(oid, rid)) return false;
+  $("windowAddedTitle").textContent = "Сохраняю окно…";
+  $("windowAddedCode").textContent = label;
+  $("windowAddedSize").textContent = w > 0 && h > 0 ? `${cm(w)} × ${cm(h)} см` : "";
+  $("windowAdded").showModal();
+  return true;
+}
+function finishPendingWindowAdded(oid, rid, label, w, h){
+  rememberWindowCode(oid, label);
+  if ($("windowAdded").open) {
+    $("windowAddedTitle").textContent = "Окно добавлено";
+    $("windowAddedCode").textContent = label;
+    $("windowAddedSize").textContent = w > 0 && h > 0 ? `${cm(w)} × ${cm(h)} см` : "";
+  } else if (!canShowWindowAdded(oid, rid)) {
+    toast(`Добавлено: ${label}`);
+  }
 }
 async function onAddSize(){
   if (sizeSaving) return;
@@ -897,25 +969,46 @@ async function addNew(w, h){
   const r = room(); if (!r || sizeSaving) return;
   const oid = curObj;
   sizeSaving = true;
+  const optimisticId = beginOptimisticRoomChange(oid, r.id, Math.max(0, ...Object.keys(types).map(Number)) + 1, 1);
+  const pendingShown = showPendingWindowAdded(oid, r.id, w, h);
   render();
   try {
-    const label = await createType(w, h, oid, r);
+    const saved = await createType(w, h, oid, r);
+    if (optimisticId) settleOptimisticRoomChange(optimisticId, true, saved);
     if (curObj === oid && curRoomId === r.id) clearInputs();
-    showWindowAdded(oid, r.id, label, w, h);
-  } catch(e) { toast(errMsg(e)); }
+    if (pendingShown) finishPendingWindowAdded(oid, r.id, saved.label, w, h);
+    else showWindowAdded(oid, r.id, saved.label, w, h);
+  } catch(e) {
+    if (optimisticId) settleOptimisticRoomChange(optimisticId, false);
+    if (pendingShown && $("windowAdded").open) $("windowAdded").close();
+    toast(errMsg(e));
+  }
   finally { sizeSaving = false; render(); }
 }
 async function addKnownSize(n, {clearDraft = true, showAdded = true} = {}){
   if (sizeSaving || $("windowAdded").open) return;
   const oid = curObj, rid = curRoomId, label = code(n), t = types[n];
   sizeSaving = true;
+  const optimisticId = beginOptimisticRoomChange(oid, rid, n, 1);
+  const pendingShown = showAdded && showPendingWindowAdded(oid, rid, t?.w, t?.h, label);
   render();
   try {
     if (await addToRoom(n)) {
+      if (optimisticId) settleOptimisticRoomChange(optimisticId, true);
       if (clearDraft && curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
-      if (showAdded) showWindowAdded(oid, rid, label, t?.w, t?.h);
+      if (pendingShown) finishPendingWindowAdded(oid, rid, label, t?.w, t?.h);
+      else if (showAdded) showWindowAdded(oid, rid, label, t?.w, t?.h);
+    } else {
+      if (optimisticId) settleOptimisticRoomChange(optimisticId, false);
+      if (pendingShown && $("windowAdded").open) $("windowAdded").close();
     }
-  } finally { sizeSaving = false; render(); }
+  } catch(e) {
+    if (optimisticId) settleOptimisticRoomChange(optimisticId, false);
+    if (pendingShown && $("windowAdded").open) $("windowAdded").close();
+    toast(errMsg(e));
+  } finally {
+    sizeSaving = false; render();
+  }
 }
 function showMatch(w, h, near){
   const box = $("matchBox");

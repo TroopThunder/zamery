@@ -348,11 +348,11 @@ s=s[:i]+'''async function createType(w, h, oid, roomAtStart){
         tx.set(ref, body);
       }
       tx.update(roomRef, roomItemsPatch(target.data(), {[n]: 1}));
-      return {label: existing ? (existing.L && existing.i ? existing.L + existing.i : "№" + n) : L + i};
+      return {num: n, baseCount: Number((target.data().items || {})[n]) || 0, label: existing ? (existing.L && existing.i ? existing.L + existing.i : "№" + n) : L + i};
     });
     if (result.conflict === "number") { n++; continue; }
     if (result.conflict === "code") { i++; continue; }
-    return result.label;
+    return result;
   }
   throw {code: "aborted"};
 }
