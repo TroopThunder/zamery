@@ -905,7 +905,7 @@ async function addNew(w, h){
   } catch(e) { toast(errMsg(e)); }
   finally { sizeSaving = false; render(); }
 }
-async function addKnownSize(n, clearDraft = true){
+async function addKnownSize(n, {clearDraft = true, showAdded = true} = {}){
   if (sizeSaving || $("windowAdded").open) return;
   const oid = curObj, rid = curRoomId, label = code(n), t = types[n];
   sizeSaving = true;
@@ -913,7 +913,7 @@ async function addKnownSize(n, clearDraft = true){
   try {
     if (await addToRoom(n)) {
       if (clearDraft && curObj === oid && curRoomId === rid) { hideMatch(); clearInputs(); }
-      showWindowAdded(oid, rid, label, t?.w, t?.h);
+      if (showAdded) showWindowAdded(oid, rid, label, t?.w, t?.h);
     }
   } finally { sizeSaving = false; render(); }
 }
@@ -1031,7 +1031,7 @@ function renderAll(){
     for (const n of nums) {
       const t = types[n];
       const minus = el("button", {textContent: "−", ariaLabel: "Убрать одно"}); minus.onclick = () => addToRoom(n, -1); minus.disabled = !allowed("measure");
-      const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addKnownSize(n, false); plus.disabled = sizeSaving || !allowed("measure");
+      const plus = el("button", {textContent: "+", ariaLabel: "Добавить одно"}); plus.onclick = () => addKnownSize(n, {clearDraft: false, showAdded: false}); plus.disabled = sizeSaving || !allowed("measure");
       ri.append(el("div", {className: "item"},
         el("span", {className: "code", textContent: code(n)}),
         el("span", {className: "size", textContent: t ? `${cm(t.w)}×${cm(t.h)}` : "…"}),
@@ -1058,13 +1058,13 @@ function renderAll(){
   $("recentSizes").classList.toggle("hidden", !r || !allowed("measure") || !recent.length);
   for (const t of recent) {
     const b = el("button", {className: "chip", disabled: sizeSaving, textContent: `${code(t.num)} · ${cm(t.w)} × ${cm(t.h)}`});
-    b.onclick = () => addKnownSize(t.num, false);
+    b.onclick = () => addKnownSize(t.num, {clearDraft: false, showAdded: false});
     recentTypes.append(b);
   }
   for (const t of tlist) {
     const b = el("button", {className: "type"}, el("span", {className: "code", textContent: code(t.num)}), el("span", {className: "size", textContent: `${cm(t.w)}×${cm(t.h)}`}));
     b.disabled = sizeSaving || !r || !allowed("measure");
-    b.onclick = () => addKnownSize(t.num, false);
+    b.onclick = () => addKnownSize(t.num, {clearDraft: false, showAdded: false});
     tb.append(b);
   }
 
